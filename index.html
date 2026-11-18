@@ -128,10 +128,11 @@ const MIN_APEX=78;                             // 轻点小跳的最低顶点（
 const HOLD_FULL=0.28;                          // 按住多久 = 满功率
 const TAP_V=Math.sqrt(2*GRAVITY*MIN_APEX);     // 小跳等效初速（≈530），用于生成小跳碎片弧线
 const COYOTE=0.10, JUMP_BUFFER=0.13;           // 土狼时间 / 跳跃缓冲
-const P_SPEED=444;                             // 剧情段速度（再快 1/3）
+const P_SPEED_EARLY=250;                        // 前两章速度（偏慢，先熟悉手感）
+const P_SPEED=444;                              // 第三章起的剧情段速度（提速 1/3 后的值）
 const PROLOGUE_SEC=20;                          // 每章选择题前的跑酷时长（秒）
 const GATE_WINDUP=1.10;                         // 结界前的共鸣倒计时时长（到触碰时刚好结束）
-const RUN_SPEED_MIN=255, RUN_SPEED_HARD_MAX=560, RUN_SPEED_K=16000, RUN_LENGTH=10500;
+const RUN_SPEED_MIN=444, RUN_SPEED_HARD_MAX=560, RUN_SPEED_K=16000, RUN_LENGTH=10500;
 const LEAD_IN=3.0;                              // 进入场景后约 3 秒遇到第一批碎片/障碍
 const PICKUP_DX=30, PICKUP_DY=60;               // 拾取判定半径（纵向比原版更宽容）
 const SPECIAL_GAP=3600;                         // 特殊灵感（麦克风/画笔）最长间隔，超过就强制来一个
@@ -214,6 +215,8 @@ let flashTimer=0;
 const groundY=()=>H*0.79;
 const playerX=()=>Math.min(W*PLAYER_X_R,PLAYER_X_MAX);
 const playing=()=>phase==="play"||phase==="windup";
+// 第一章/第二章偏慢，第三章起提速；无尽模式起始速度与提速后一致
+const prologueSpeed=step=>step<2?P_SPEED_EARLY:P_SPEED;
 
 /* ============================================================
    4. 精灵预烘焙（关键性能优化：一次性画好，之后全部 drawImage）
@@ -843,39 +846,60 @@ function runDiff(){
  if(chapter!=="run") return 0;
  return clamp(runTime/30,0,1)+clamp((runTime-30)/180,0,.6);
 }
-// 前两章（无伤害）：只换碎片布局，靠形状变难，不放压力障碍
+// 前两章（无伤害）：只换碎片布局，靠形状变难，不放压力障碍；同一套不连续重复
 function calmChunk(parts,v){
- const r=Math.random();
  const n=4+Math.round(Math.random()*2);
- if(storyStep<1){
-  if(r<.22){ zigzag(parts,0,n,58,v); arcAlongJump(parts,240+v*.2,4,v,TAP_V,.12,.9); }
-  else if(r<.42){ groundShards(parts,0,3,62,54); stairs(parts,220,4,v); }
-  else if(r<.58){ waveLine(parts,10,6,v); }
-  else if(r<.72){ column(parts,60,v,false); groundShards(parts,150,2,64,54); }
-  else if(r<.86){ diamond(parts,60,120); arcAlongJump(parts,200,3,v,TAP_V,.2,.8); }
-  else { arcAlongJump(parts,10,5,v,TAP_V,.10,.92); }
- }else{
-  if(r<.16){ zigzag(parts,0,n,54,v); arcAlongJump(parts,230+v*.2,4,v,JUMP_V,.08,.92); }
-  else if(r<.32){ groundShards(parts,0,3,60,54); arcDoubleJump(parts,220,6,v); }
-  else if(r<.46){ stairs(parts,10,5,v); groundShards(parts,220,2,62,54); }
-  else if(r<.60){ waveLine(parts,10,7,v); arcDoubleJump(parts,200+v*.4,5,v); }
-  else if(r<.72){ column(parts,40,v,true); column(parts,150,v,false); }
-  else if(r<.84){ diamond(parts,60,150); diamond(parts,260,300); }
-  else if(r<.94){ tripleArc(parts,10,v,4); }
-  else { arcDoubleJump(parts,10,6,v); }
- }
+ const list = storyStep<1
+  ? [ ()=>{ zigzag(parts,0,n,58,v); arcAlongJump(parts,240+v*.2,4,v,TAP_V,.12,.9); },
+      ()=>{ groundShards(parts,0,3,62,54); stairs(parts,220,4,v); },
+      ()=>waveLine(parts,10,6,v),
+      ()=>{ column(parts,60,v,false); groundShards(parts,150,2,64,54); },
+      ()=>{ diamond(parts,60,120); arcAlongJump(parts,200,3,v,TAP_V,.2,.8); },
+      ()=>arcAlongJump(parts,10,5,v,TAP_V,.10,.92) ]
+  : [ ()=>{ zigzag(parts,0,n,54,v); arcAlongJump(parts,230+v*.2,4,v,JUMP_V,.08,.92); },
+      ()=>{ groundShards(parts,0,3,60,54); arcDoubleJump(parts,220,6,v); },
+      ()=>{ stairs(parts,10,5,v); groundShards(parts,220,2,62,54); },
+      ()=>{ waveLine(parts,10,7,v); arcDoubleJump(parts,200+v*.4,5,v); },
+      ()=>{ column(parts,40,v,true); column(parts,150,v,false); },
+      ()=>{ diamond(parts,60,150); diamond(parts,260,300); },
+      ()=>tripleArc(parts,10,v,4),
+      ()=>arcDoubleJump(parts,10,6,v) ];
+ pickLayout("calm"+(storyStep<1?0:1),list)();
 }
-// 压力墙：n 个障碍合拢成一道墙，一次跳跃越过（跨度≈44*(n-1)+42，各速度都够跳）
-function hazardWall(parts,count,offset){
- const n=Math.max(1,Math.min(4,count||1)), o=offset||0;
- for(let i=0;i<n;i++) parts.push({kind:"obstacle",type:i%2?"alarm":"phone",dx:150+o+i*44});
+// 按权重挑一个布局，并避免和上一块重复（不连续出现同样的波形）
+let lastPattern="";
+function pickLayout(tag,list,weights){
+ const n=list.length;
+ let idx;
+ if(weights){
+  let total=0; for(const w of weights) total+=w;
+  let pick=Math.random()*total; idx=n-1;
+  for(let i=0;i<n;i++){ pick-=weights[i]; if(pick<=0){ idx=i; break; } }
+ }else{
+  idx=Math.floor(Math.random()*n);
+ }
+ if(n>1 && (tag+":"+idx)===lastPattern) idx=(idx+1)%n;      // 同一套不连着来
+ lastPattern=tag+":"+idx;
+ return list[idx];
+}
+// 单个障碍串：n 个彼此独立的障碍，间隔随难度收紧（1.00v → 0.55v，且前期更宽松），不再并排成墙
+function singleHazards(parts,v,n,startDx){
+ const D=clamp(runDiff(),0,1.6);
+ const t=clamp((D-.35)/.65,0,1);            // D<0.35 时不收紧
+ const step=v*(1.00-.45*t);
+ let dx=startDx||150;
+ for(let i=0;i<n;i++){
+  parts.push({kind:"obstacle",type:Math.random()<.66?"phone":"alarm",dx:dx});
+  dx+=step;
+ }
+ return dx;
 }
 function buildChunk(v){
  const pro=chapter==="prologue";
  const d=pro?0:clamp(runDiff(),0,1.6);
  const parts=[];
  const tapV=TAP_V, fullV=JUMP_V;
- const arcN=4+Math.round(2*d);          // 难度越高，一串碎片越多
+ const arcN=5+Math.round(3*d);          // 难度越高，一串碎片越多（5 → 10）
  const r=Math.random();
 
  // 剧本要求：区域三出现麦克风与画笔（挂在小跳弧线的顶点附近）
@@ -901,30 +925,39 @@ function buildChunk(v){
   return {parts:sanitizeChunk(parts)};
  }
 
- // 难度越高：压力墙更长（一次跳越过多个）、弧线更长、还必须用二段跳
+ // 单个障碍：数量随难度增加（1 → 5 个）、间隔随难度收紧；不再做并排墙
  const D=clamp(d,0,1.6);
- const wallN=1+(D>.50?1:0)+(D>.95?1:0)+(D>1.35?1:0);      // 1 → 4 个一排
- const pool=[
-  [.11, ()=>specialChunk(parts,v,tapV,D>.4)],
-  [.07, ()=>{ zigzag(parts,0,4,58,v); arcAlongJump(parts,240,4,v,tapV,.12,.9); }],
-  [.05, ()=>{ groundShards(parts,0,3,60,54); stairs(parts,220,4,v); }],
-  [.05, ()=>waveLine(parts,10,7,v)],
-  [.05, ()=>{ column(parts,40,v,D>.7); diamond(parts,220,D>.7?300:150); }],
-  [.07+.09*D, ()=>arcDoubleJump(parts,20,arcN,v)],
-  [D>.55?(.05+.08*D):0, ()=>tripleArc(parts,20,v,4)],
-  [.20+.30*D, ()=>{ hazardWall(parts,wallN,0);
-                    if(Math.random()<.5) arcAlongJump(parts,20,arcN,v,fullV,.05,.95);
-                    else arcDoubleJump(parts,20,arcN,v); }],
-  [.05+.20*D, ()=>{ hazardWall(parts,Math.min(4,wallN+1),0);
-                    // 第二道墙：难度越高贴得越近（0.85v ~ 1.05v），不再死守 0.78 秒
-                    if(D>.9&&Math.random()<.6) hazardWall(parts,Math.min(3,wallN),v*(1.05-.20*Math.min(1,D)));
-                    arcAlongJump(parts,20,arcN,v,fullV,.05,.95); }],
-  [.06, ()=>arcAlongJump(parts,20,arcN,v,fullV,.05,.95)]
+ const hzN=1+(D>.45?1:0)+(D>.80?1:0)+(D>1.15?1:0);
+ const layouts=[
+  ["haz1",  ()=>{ singleHazards(parts,v,hzN,150);
+                  if(Math.random()<.5) arcAlongJump(parts,20,arcN,v,fullV,.05,.95);
+                  else arcDoubleJump(parts,20,arcN,v);
+                  if(D>.7) groundShards(parts,260,2,72,58); }],
+  ["haz2",  ()=>{ singleHazards(parts,v,hzN,150); zigzag(parts,0,2,60,v); }],
+  ["hazPure",()=>{ singleHazards(parts,v,hzN,150); groundShards(parts,0,2,62,56); }],   // 障碍更密，仍给少量碎片
+  ["zig",   ()=>{ zigzag(parts,0,4,58,v); arcAlongJump(parts,240,4,v,tapV,.12,.9); }],
+  ["stairs",()=>{ groundShards(parts,0,3,60,54); stairs(parts,220,4,v); }],
+  ["wave",  ()=>waveLine(parts,10,7,v)],
+  ["column",()=>{ column(parts,40,v,D>.7); diamond(parts,220,D>.7?300:150); }],
+  ["double",()=>arcDoubleJump(parts,20,arcN,v)],
+  ["triple",()=>tripleArc(parts,20,v,4)],
+  ["arc",   ()=>arcAlongJump(parts,20,arcN,v,fullV,.05,.95)]
  ];
- let total=0; for(const it of pool) total+=it[0];
- let pick=Math.random()*total, hit=pool[pool.length-1][1];
- for(const it of pool){ pick-=it[0]; if(pick<=0){ hit=it[1]; break; } }
- hit();
+ const wts=[ .26+.30*D, .12+.18*D, .10+.26*D, .05, .04, .04, .04,
+             .05+.06*D, (D>.55?.03+.05*D:0), .04 ];
+ const idx=(()=>{
+  let total=0; for(const w of wts) total+=w;
+  let pick=Math.random()*total, i=wts.length-1;
+  for(let k=0;k<wts.length;k++){ pick-=wts[k]; if(pick<=0){ i=k; break; } }
+  return i;
+ })();
+ let use=idx;
+ if((("run:"+use)===lastPattern) && layouts.length>1){
+  // 换一个权重>0 的下一项
+  for(let k=1;k<layouts.length;k++){ const j=(idx+k)%layouts.length; if(wts[j]>0){ use=j; break; } }
+ }
+ lastPattern="run:"+use;
+ layouts[use][1]();
  return {parts:sanitizeChunk(parts)};
 }
 // 在指定屏幕 x 处投放一个块，返回占用长度与障碍数量
@@ -950,9 +983,9 @@ function chunkGap(v){
  return Math.max(170,v*(.85-.45*Math.min(1,d)));       // 0.85v → 0.40v
 }
 function obsGap(v,gap){
- // 越到后面落地窗口越短：0.78v → 0.48v（不再死守，就是为了难）
+ // 越到后面落地窗口越短：0.78v → 0.55v（块与块之间仍保留一次落地+起跳的余量）
  const d=chapter==="run"?clamp(runDiff(),0,1.6):0;
- const k=.78-.30*clamp(d,0,1);
+ const k=.78-.23*clamp(d,0,1);
  return Math.max(gap,v*k);
 }
 function maybeSpawn(v){
@@ -1180,12 +1213,13 @@ function transitionInto(next){
 }
 function beginPrologue(step){
  chapter="prologue"; storyStep=step;
- dist=0; barPct=-1; speed=P_SPEED; py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE; jbuf=0;
+ const sp=prologueSpeed(step);                 // 前两章较慢，第三章起提速
+ dist=0; barPct=-1; speed=sp; py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE; jbuf=0;
  jumpHeld=false; jumpHoldT=0;
  ents=[]; parts=[]; nextSpawn=0; grace=.3; specialDone=false; slowT=0;
  clutter=[]; clutterT=0; windupEl.style.display="none";
  sceneA=sceneB=Math.min(step,4); sceneMix=1;
- prologueLen=PROLOGUE_SEC*P_SPEED;        // 每章跑酷约 30 秒，结束时撞上结界
+ prologueLen=PROLOGUE_SEC*sp;             // 每章跑酷约 20 秒，结束时撞上结界
  narrStep=-1; setNarrative(step); syncCount();
  $("narrative").style.display="block"; $("storyBanner").style.display="block";
  $("hud").style.display="none";
@@ -1195,7 +1229,7 @@ function beginPrologue(step){
  $("storyProgress").style.width="0%";
  phase="play"; paused=false;
  trans={dir:"in",t:0.6,dur:0.6,next:null}; spawnTransFx("in");
- leadInSpawn(P_SPEED);                    // 首批内容约 3 秒后到达，不再开场长空白
+ leadInSpawn(sp);                         // 首批内容约 3 秒后到达，不再开场长空白
  // 结界：摆在“跑满一章所需距离”的位置，和碎片一样随世界移动
  gate={kind:"gate",x:playerX()+prologueLen,w:6,h:0};
  gateTouched=false; gateWarn=false;
@@ -1388,7 +1422,7 @@ function update(dt){
   scoreAcc+=dt*12;
  }else{
   dist+=v*dt;
-  speed=P_SPEED;
+  speed=prologueSpeed(storyStep);
  }
 
  if(phase==="windup"){
