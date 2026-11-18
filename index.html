@@ -128,7 +128,7 @@ const MIN_APEX=78;                             // 轻点小跳的最低顶点（
 const HOLD_FULL=0.28;                          // 按住多久 = 满功率
 const TAP_V=Math.sqrt(2*GRAVITY*MIN_APEX);     // 小跳等效初速（≈530），用于生成小跳碎片弧线
 const COYOTE=0.10, JUMP_BUFFER=0.13;           // 土狼时间 / 跳跃缓冲
-const P_SPEED=250;                             // 剧情段速度
+const P_SPEED=333;                             // 剧情段速度（在 250 的基础上快 1/3）
 const PROLOGUE_SEC=30;                          // 每章选择题前的跑酷时长（秒）
 const GATE_WINDUP=1.10;                         // 结界前的共鸣前摇时长（到触碰时刚好结束）
 const RUN_SPEED_MIN=255, RUN_SPEED_HARD_MAX=560, RUN_SPEED_K=16000, RUN_LENGTH=10500;
@@ -203,6 +203,7 @@ let py=0, vy=0, onGround=true, jumpsLeft=2, coyote=COYOTE, jbuf=0, jumpHeld=fals
 let invuln=0, flash=0, shake=0, slowT=0, grace=0;
 let trans=null, fx=[];            // 场景切换：{dir:'out'|'in', t, dur, next} + 过渡粒子
 let gate=null, gateTouched=false, windHoldSpeed=false, lastSpecialAt=-9999, trailAcc=0;
+let runTime=0;                  // 无尽模式已跑时长（秒），用于难度递增
 let score=0, scoreAcc=0, scoreBonus=0, shards=0, mics=0, brushes=0, lives=3;
 let ents=[], parts=[];
 let sceneA=0, sceneB=0, sceneMix=1;
@@ -724,22 +725,92 @@ function arcAlongJump(parts,startDx,count,speed,v0,from,to){
 function groundShards(parts,start,count,step,base){
  for(let i=0;i<count;i++) parts.push({kind:"item",type:"shard",dx:start+i*step,alt:base});
 }
+// 高低交错的“之”字串：一半贴地、一半需要小跳
+function zigzag(parts,start,count,step,v){
+ for(let i=0;i<count;i++){
+  const hi=i%2===1;
+  parts.push({kind:"item",type:"shard",dx:start+i*step,alt:hi?(96+Math.random()*10):(54+Math.random()*6)});
+ }
+}
+// 阶梯串：沿大跳的上升段排列（60→150），需要一次完整的跳跃配合
+function stairs(parts,start,count,speed){
+ const v0=JUMP_V, T=jumpAirtime(v0);
+ for(let i=0;i<count;i++){
+  const k=.10+.42*(count<2?.5:i/(count-1));       // 上升段
+  parts.push({kind:"item",type:"shard",dx:start+speed*T*k,alt:jumpH(T*k,v0)+34});
+ }
+}
+// 二段跳弧线：前半程在第一次跳跃上，后半程接着二段跳继续往上
+function arcDoubleJump(parts,startDx,count,speed){
+ const tA=jumpAirtime(JUMP_V)*.5;                // 第一次跳跃到顶点的时间
+ const hA=jumpH(tA,JUMP_V);                      // 顶点高度≈182
+ const T2=jumpAirtime(JUMP2_V);
+ for(let i=0;i<count;i++){
+  const u=count<2?.5:i/(count-1);
+  if(u<.5){
+   const tt=tA*(u/.5)*.85+.12*tA;                // 第一次跳跃的上升段
+   parts.push({kind:"item",type:"shard",dx:startDx+speed*tt,alt:jumpH(tt,JUMP_V)+34});
+  }else{
+   const tau=(u-.5)/.5*T2*.50;                   // 二段跳的上升段
+   parts.push({kind:"item",type:"shard",dx:startDx+speed*(tA+tau),alt:hA+jumpH(tau,JUMP2_V)+34});
+  }
+ }
+}
+// 三层叠弧：低（小跳）/ 中（大跳）/ 高（二段跳）
+function tripleArc(parts,startDx,speed,count){
+ arcAlongJump(parts,startDx,count,speed,TAP_V,.1,.9);
+ arcAlongJump(parts,startDx+speed*.30,count-1,speed,JUMP_V,.12,.9);
+ arcDoubleJump(parts,startDx+speed*.55,count-1,speed);
+}
 // 小跳弧线（轻按）与大跳弧线（长按）用各自的真实轨迹生成
-function specialChunk(parts,v,tapV){
- // 一半放在小跳顶点（轻点就能拿），一半放在大跳顶点（长按才够高）
+function specialChunk(parts,v,tapV,extra){
+ // 一半放在小跳顶点（轻点就能拿），一半放高处（大跳/二段跳才够）
  const type=Math.random()<.5?"mic":"brush";
- const high=(dist-lastSpecialAt>SPECIAL_GAP)||Math.random()<.45;
- const v0=high?JUMP_V:tapV, T=jumpAirtime(v0);
- parts.push({kind:"item",type:type,dx:200+v*T*.5,alt:jumpH(T*.5,v0)+34});
+ const mode=(dist-lastSpecialAt>SPECIAL_GAP)?2:(Math.random()<.45?2:1);
+ if(mode===2){
+  const tA=jumpAirtime(JUMP_V)*.5, hA=jumpH(tA,JUMP_V);
+  parts.push({kind:"item",type:type,dx:200+v*tA,alt:hA+34});
+ }else{
+  const T=jumpAirtime(tapV);
+  parts.push({kind:"item",type:type,dx:200+v*T*.5,alt:jumpH(T*.5,tapV)+34});
+ }
  groundShards(parts,0,2,62,56);
+ if(extra) arcDoubleJump(parts,120,5,v);
  lastSpecialAt=dist;
+}
+// 无尽难度：0 → 1（30s 达到“很难”），之后继续缓慢加码，上限 1.6
+function runDiff(){
+ if(chapter!=="run") return 0;
+ return clamp(runTime/30,0,1)+clamp((runTime-30)/180,0,.6);
+}
+// 前两章（无伤害）：只换碎片布局，靠形状变难，不放压力障碍
+function calmChunk(parts,v){
+ const r=Math.random();
+ const n=4+Math.round(Math.random()*2);
+ if(storyStep<1){
+  if(r<.34){ zigzag(parts,0,n,58,v); arcAlongJump(parts,240+v*.2,4,v,TAP_V,.12,.9); }
+  else if(r<.66){ groundShards(parts,0,3,62,54); stairs(parts,220,4,v); }
+  else { arcAlongJump(parts,10,5,v,TAP_V,.10,.92); }
+ }else{
+  if(r<.25){ zigzag(parts,0,n,54,v); arcAlongJump(parts,230+v*.2,4,v,JUMP_V,.08,.92); }
+  else if(r<.48){ groundShards(parts,0,3,60,54); arcDoubleJump(parts,220,6,v); }
+  else if(r<.70){ stairs(parts,10,5,v); groundShards(parts,220,2,62,54); }
+  else if(r<.88){ arcAlongJump(parts,10,5,v,JUMP_V,.06,.94); zigzag(parts,230+v*.4,3,56,v); }
+  else { arcDoubleJump(parts,10,6,v); }
+ }
+}
+// 压力墙：n 个障碍合拢成一道墙，一次跳跃越过（跨度≈44*(n-1)+42，各速度都够跳）
+function hazardWall(parts,count,offset){
+ const n=Math.max(1,Math.min(4,count||1)), o=offset||0;
+ for(let i=0;i<n;i++) parts.push({kind:"obstacle",type:i%2?"alarm":"phone",dx:150+o+i*44});
 }
 function buildChunk(v){
  const pro=chapter==="prologue";
- const t=pro?Math.min(1,storyStep/4):Math.min(1,dist/RUN_LENGTH);
+ const d=pro?0:clamp(runDiff(),0,1.6);
  const parts=[];
+ const tapV=TAP_V, fullV=JUMP_V;
+ const arcN=4+Math.round(2*d);          // 难度越高，一串碎片越多
  const r=Math.random();
- const tapV=TAP_V, fullV=JUMP_V;      // 轻按 / 长按的起跳初速
 
  // 剧本要求：区域三出现麦克风与画笔（挂在小跳弧线的顶点附近）
  if(pro&&storyStep===2&&!specialDone&&dist>420){
@@ -751,73 +822,81 @@ function buildChunk(v){
   lastSpecialAt=dist;
   return {parts:sanitizeChunk(parts)};
  }
- // 剧情第一步：只有光点，没有压力障碍
- if(pro&&storyStep<1){
-  groundShards(parts,0,4,62,56);
-  arcAlongJump(parts,300,4,v,tapV,.15,.9);
-  return {parts:parts};
- }
-
- // 特殊灵感：随机频率提高 + 兜底“保底间隔”，保证不会长时间看不到麦克风/画笔
- const forceSpecial=(t>.12)&&(dist-lastSpecialAt>SPECIAL_GAP);
- if(forceSpecial||(r<.11&&t>.12)){
-  specialChunk(parts,v,tapV);
+ // 前两章：只有光点，但布局更花、更需要跳
+ if(pro&&storyStep<2){
+  calmChunk(parts,v);
   return {parts:sanitizeChunk(parts)};
  }
- if(r<.26){
-  // 贴地一串（直接跑过去就能吃）+ 一条小跳弧线
-  groundShards(parts,0,3,60,54+Math.random()*8);
-  arcAlongJump(parts,200,5,v,tapV,.12,.9);
- }else if(r<.40){
-  // 小跳弧线：轻点就够
-  arcAlongJump(parts,20,5,v,tapV,.10,.92);
- }else if(r<.52){
-  // 大跳弧线：长按才吃得全，轻按只能吃到低处几个
-  arcAlongJump(parts,20,5,v,fullV,.06,.94);
- }else if(r<.78){
-  // 障碍 + 大跳弧线（跨越障碍的奖励线）
-  const type=Math.random()<.66?"phone":"alarm";
-  parts.push({kind:"obstacle",type,dx:150});
-  arcAlongJump(parts,20,5,v,fullV,.05,.95);
- }else if(r<.92&&t>.25){
-  // 连排双障碍：贴合成一道“压力墙”，一次大跳越过
-  parts.push({kind:"obstacle",type:"phone",dx:150});
-  parts.push({kind:"obstacle",type:"phone",dx:194});
-  arcAlongJump(parts,20,4,v,fullV,.05,.95);
- }else{
-  groundShards(parts,60,3,64,56);
-  arcAlongJump(parts,60,3,v,tapV,.2,.8);
+
+ // 特殊灵感：概率 + 保底间隔
+ const forceSpecial=(dist-lastSpecialAt>SPECIAL_GAP)&&(pro||d>.05);
+ if(forceSpecial||(r<.11&&(pro||d>.05))){
+  specialChunk(parts,v,tapV,d>.4);
+  return {parts:sanitizeChunk(parts)};
  }
+
+ // 难度越高：压力墙更长（一次跳越过多个）、弧线更长、还必须用二段跳
+ const D=clamp(d,0,1.6);
+ const wallN=1+(D>.50?1:0)+(D>.95?1:0)+(D>1.35?1:0);      // 1 → 4 个一排
+ const pool=[
+  [.11, ()=>specialChunk(parts,v,tapV,D>.4)],
+  [.08, ()=>{ zigzag(parts,0,4,58,v); arcAlongJump(parts,240,4,v,tapV,.12,.9); }],
+  [.05, ()=>{ groundShards(parts,0,3,60,54); stairs(parts,220,4,v); }],
+  [.07+.10*D, ()=>arcDoubleJump(parts,20,arcN,v)],
+  [D>.55?(.05+.08*D):0, ()=>tripleArc(parts,20,v,4)],
+  [.20+.30*D, ()=>{ hazardWall(parts,wallN,0);
+                    if(Math.random()<.5) arcAlongJump(parts,20,arcN,v,fullV,.05,.95);
+                    else arcDoubleJump(parts,20,arcN,v); }],
+  [.05+.20*D, ()=>{ hazardWall(parts,Math.min(4,wallN+1),0);
+                    // 第二道墙放在“一次完整跳跃之后”（≥1.05v），密度上去了间距仍可跳过
+                    if(D>.9&&Math.random()<.5) hazardWall(parts,Math.min(3,wallN),v*1.05);
+                    arcAlongJump(parts,20,arcN,v,fullV,.05,.95); }],
+  [.06, ()=>arcAlongJump(parts,20,arcN,v,fullV,.05,.95)]
+ ];
+ let total=0; for(const it of pool) total+=it[0];
+ let pick=Math.random()*total, hit=pool[pool.length-1][1];
+ for(const it of pool){ pick-=it[0]; if(pick<=0){ hit=it[1]; break; } }
+ hit();
  return {parts:sanitizeChunk(parts)};
 }
-// 在指定屏幕 x 处投放一个块，返回该块占用的横向长度
+// 在指定屏幕 x 处投放一个块，返回占用长度与障碍数量
 function placeChunk(baseX,v){
  const parts2=buildChunk(v).parts;
- let maxOff=0;
+ let maxOff=0, obs=0;
  for(const p of parts2){
   if(p.kind==="obstacle"){
    const d=OBST[p.type];
    ents.push({kind:"obstacle",type:p.type,x:baseX+p.dx,w:d.w,h:d.h,hit:false});
-   maxOff=Math.max(maxOff,p.dx+d.w);
+   maxOff=Math.max(maxOff,p.dx+d.w); obs++;
   }else{
    ents.push({kind:"item",type:p.type,x:baseX+p.dx,alt:p.alt,ph:Math.random()*TAU});
    maxOff=Math.max(maxOff,p.dx+34);
   }
  }
- return maxOff;
+ return {len:maxOff,obs:obs};
 }
-function chunkGap(v){ return chapter==="run"?Math.max(220,v*0.8):380; }
+// 块间距：无尽模式随难度收紧；但**含障碍的块**之间必须留出“落地→再起跳”的空间
+function chunkGap(v){
+ if(chapter!=="run") return 380;
+ const d=clamp(runDiff(),0,1.6);
+ return Math.max(170,v*(.85-.45*Math.min(1,d)));       // 0.85v → 0.40v
+}
+function obsGap(v,gap){ return Math.max(gap,v*.78); }   // 约 0.78 秒，够落地再跳
 function maybeSpawn(v){
  if(dist<nextSpawn) return;
- const maxOff=placeChunk(W+120,v);
- nextSpawn=dist+maxOff+chunkGap(v);
+ const res=placeChunk(W+120,v);
+ let gap=chunkGap(v);
+ if(res.obs>0) gap=obsGap(v,gap);
+ nextSpawn=dist+res.len+gap;
 }
 // 进场首批：直接摆在“约 LEAD_IN 秒后到达”的位置，避免开场长空白
 function leadInSpawn(v){
  const baseX=Math.max(playerX()+v*LEAD_IN,W*0.36);
- const maxOff=placeChunk(baseX,v);
- // 下一块仍从屏幕右缘投放，但保证与首批之间至少留出 chunkGap
- nextSpawn=dist+Math.max(0,baseX+maxOff+chunkGap(v)-(W+120));
+ const res=placeChunk(baseX,v);
+ let gap=chunkGap(v);
+ if(res.obs>0) gap=obsGap(v,gap);
+ // 下一块仍从屏幕右缘投放，但保证与首批之间至少留出 gap
+ nextSpawn=dist+Math.max(0,baseX+res.len+gap-(W+120));
 }
 
 /* ============================================================
@@ -1052,7 +1131,7 @@ function beginPrologue(step){
 }
 function launchRun(){
  chapter="run"; phase="play";
- dist=0; barPct=-1; speed=RUN_SPEED_MIN; score=0; scoreAcc=0; scoreBonus=0;
+ dist=0; barPct=-1; speed=RUN_SPEED_MIN; score=0; scoreAcc=0; scoreBonus=0; runTime=0;
  py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE; jbuf=0; jumpHeld=false; jumpHoldT=0;
  ents=[]; parts=[]; nextSpawn=0; grace=.35; slowT=0; invuln=0;
  gate=null; gateTouched=false; windHoldSpeed=false; lastSpecialAt=-500;
@@ -1226,6 +1305,7 @@ function update(dt){
 
  if(chapter==="run"){
   dist+=v*dt;
+  runTime+=dt;                      // 难度按“已跑时长”递增：30s 达到很难
   // 无尽模式：速度渐进上升，越来越快但收敛于 RUN_SPEED_HARD_MAX
   speed=RUN_SPEED_MIN+(RUN_SPEED_HARD_MAX-RUN_SPEED_MIN)*(1-Math.exp(-dist/RUN_SPEED_K));
   scoreAcc+=dt*12;
@@ -1298,7 +1378,7 @@ function resetAll(){
  invuln=0; flash=0; shake=0; slowT=0; grace=0;
  trans=null; fx=[];
  gate=null; gateTouched=false; windHoldSpeed=false; lastSpecialAt=-9999;
- score=0; scoreAcc=0; scoreBonus=0; shards=0; mics=0; brushes=0; lives=3;
+ score=0; scoreAcc=0; scoreBonus=0; shards=0; mics=0; brushes=0; lives=3; runTime=0;
  ents=[]; parts=[];
  sceneA=sceneB=0; sceneMix=1;
  windTimer=0; windNext=null;
@@ -1372,6 +1452,12 @@ window.addEventListener("keydown",e=>{
  }
 },{passive:false});
 
+// ★ 关键：键盘也必须监听 keyup，否则按住空格永远不“松手” → 小跳永不生效
+window.addEventListener("keyup",e=>{
+ const isJump=e.code==="Space"||e.code==="ArrowUp"||e.code==="KeyW";
+ if(isJump) releaseJump();
+});
+
 document.addEventListener("visibilitychange",()=>{
  if(document.hidden&&playing()&&!paused) pause();
 });
@@ -1385,14 +1471,46 @@ $("end").onclick=requestEnd;
 $("endFromPause").onclick=()=>{ resume(); requestEnd(); };
 $("restart").onclick=restart;
 $("playAgain").onclick=restart;
+// —— 复制人格卡：climboard → execCommand 兜底 → 弹窗手动复制；按钮上给可见反馈 ——
+function legacyCopy(text){
+ try{
+  const ta=document.createElement("textarea");
+  ta.value=text;
+  ta.setAttribute("readonly","");
+  ta.style.position="fixed";
+  ta.style.top="0";
+  ta.style.left="-9999px";
+  ta.style.opacity="0";
+  (document.body||document.documentElement).appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0,text.length);
+  const ok=!!(document.execCommand&&document.execCommand("copy"));
+  ta.parentNode&&ta.parentNode.removeChild(ta);
+  return ok;
+ }catch(e){ return false; }
+}
+function copyText(text,pick){
+ if(navigator.clipboard&&navigator.clipboard.writeText&&window.isSecureContext!==false){
+  return navigator.clipboard.writeText(text).then(()=>true).catch(()=>{
+   if(legacyCopy(text)) return true;
+   if(pick) pick();                       // 让用户手动框选
+   return false;
+  });
+ }
+ if(legacyCopy(text)) return Promise.resolve(true);
+ if(pick) pick();
+ return Promise.resolve(false);
+}
 $("share").onclick=()=>{
+ const btn=$("share");
  const t=archetypes.find(a=>a.en===$("typeEnglish").textContent)||archetypes[0];
  const s=`创想大师人格档案：${t.name} / ${t.en}\n${t.quote}\n灵感共鸣指数：${$("typeScore").textContent}\n跑酷积分：${score}｜灵感碎片：${shards}｜特殊灵感：${mics+brushes}｜探索距离：${Math.round(dist/10)}m\n#创想大师 #灵感世界修复计划`;
- if(navigator.clipboard&&navigator.clipboard.writeText){
-  navigator.clipboard.writeText(s).then(()=>toast("人格卡文案已复制")).catch(()=>prompt("复制人格卡",s));
- }else{
-  prompt("复制人格卡",s);
- }
+ const old=btn.textContent;
+ btn.textContent="复制中…";
+ copyText(s,()=>prompt("长按选择后复制人格卡文案",s)).then(ok=>{
+  btn.textContent=ok?"已复制 ✓":"点这里手动复制";
+  setTimeout(()=>{btn.textContent=old},1800);
+ });
 };
 
 window.addEventListener("resize",resize);
