@@ -80,7 +80,7 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
  <p class="subtitle">灵感核心失控，世界里的色彩、声音与奇妙想法散落各处。<br>跟随小精灵出发，把灵感重新带回世界。</p>
  <div class="hero"><div class="orbit"></div><div class="orbit b"></div><span class="sprite">🧚</span><span class="spark s1">✦</span><span class="spark s2">✧</span></div>
  <button class="primary" id="begin">开启灵感旅程</button>
- <div class="hint">电脑：空格 / ↑ 跳跃（按下即生效，可二连跳）· 手机：点击跳跃按钮<br>第一章就是跑酷探索：边跑边看剧情变化，跳跃穿越灵感世界</div>
+ <div class="hint">电脑：空格 / ↑ 跳跃（<b>轻点小跳、按住大跳</b>，空中再按一次二连跳）· 手机：点右下按钮<br>第一章就是跑酷探索：边跑边看剧情变化，跳跃穿越灵感世界</div>
 </section>
 
 <section class="screen overlay" id="story" style="display:none">
@@ -122,10 +122,14 @@ const wrap=(v,s)=>((v%s)+s)%s;
 /* ============================================================
    0. 调参区（跑酷手感全在这里）
    ============================================================ */
-const GRAVITY=1800, JUMP_V=780, JUMP2_V=730;   // 单跳顶点≈169px、滞空≈0.87s：低速高速都能从容越过一个障碍组
+const GRAVITY=1800, JUMP_V=780, JUMP2_V=730;   // 长按大跳：顶点≈169px、滞空≈0.87s
+const MIN_APEX=105;                            // 轻按小跳的最低顶点（与最低一条碎片弧线一致）
+const MIN_JUMP_VY=Math.sqrt(2*GRAVITY*MIN_APEX); // 由最低顶点反推的初速 ≈615
 const COYOTE=0.10, JUMP_BUFFER=0.13;           // 土狼时间 / 跳跃缓冲
 const P_SPEED=250;                             // 剧情段速度
-const RUN_SPEED_MIN=255, RUN_SPEED_MAX=430, RUN_LENGTH=10500;
+const RUN_SPEED_MIN=255, RUN_SPEED_HARD_MAX=560, RUN_SPEED_K=16000, RUN_LENGTH=10500;
+const LEAD_IN=3.0;                              // 进入场景后约 3 秒遇到第一批碎片/障碍
+const PICKUP_DX=30, PICKUP_DY=60;               // 拾取判定半径（纵向比原版更宽容）
 const PLAYER_X_R=0.22, PLAYER_X_MAX=118;
 const PROLOGUE_DAMAGE=false;                   // 剧本：剧情段不扣血（改 true 可打开）
 const OBST={phone:{w:42,h:46},alarm:{w:44,h:58}};
@@ -185,13 +189,14 @@ const PALETTES=[
    ============================================================ */
 let W=0,H=0,dpr=1;
 let loopOn=false, rafId=0, lastT=0, paused=false;
-let phase="idle";                 // idle | play | windup | question | over
+let phase="idle";                 // idle | play | windup | trans | question | over
 let chapter="prologue";           // prologue | run
 let clock=0;
 let storyStep=0, qIndex=0, answers=[-1,-1,-1,-1,-1];
 let dist=0, speed=P_SPEED, prologueLen=2400, nextSpawn=0, specialDone=false;
-let py=0, vy=0, onGround=true, jumpsLeft=2, coyote=COYOTE, jbuf=0;
+let py=0, vy=0, onGround=true, jumpsLeft=2, coyote=COYOTE, jbuf=0, jumpHeld=false;
 let invuln=0, flash=0, shake=0, slowT=0, grace=0;
+let trans=null, fx=[];            // 场景切换：{dir:'out'|'in', t, dur, next} + 过渡粒子
 let score=0, scoreAcc=0, scoreBonus=0, shards=0, mics=0, brushes=0, lives=3;
 let ents=[], parts=[];
 let sceneA=0, sceneB=0, sceneMix=1;
@@ -440,6 +445,7 @@ function draw(){
  for(let i=0;i<ents.length;i++) drawEnt(ents[i],gy);
  drawHero(pal,gy);
  drawParts();
+ drawTrans();
  drawFx();
 
  ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -598,6 +604,23 @@ function drawFx(){
  }
  if(flash>0){ ctx.fillStyle="rgba(255,255,255,"+(flash*.22).toFixed(3)+")"; ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2); }
 }
+// 场景切换过渡：粒子 + 暗幕（退场渐暗 → 入场浮现）
+function drawTrans(){
+ const PAD=48;
+ if(trans){
+  const p=clamp(1-trans.t/trans.dur,0,1);
+  const dim=trans.dir==="out"?Math.min(.66,p*.9):Math.max(0,(1-p)*.66);
+  if(dim>0.002){ ctx.fillStyle="rgba(8,12,24,"+dim.toFixed(3)+")"; ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2); }
+ }
+ // 过渡粒子（退场向外飞、入场向内飘）——暗幕结束后仍把它画完
+ for(let i=0;i<fx.length;i++){
+  const q=fx[i];
+  ctx.globalAlpha=Math.max(0,Math.min(1,q.life/0.7));
+  ctx.fillStyle=q.color;
+  ctx.beginPath(); ctx.arc(q.x,q.y,q.r,0,TAU); ctx.fill();
+ }
+ ctx.globalAlpha=1;
+}
 
 /* ============================================================
    7. 特效与工具
@@ -652,58 +675,78 @@ function sanitizeChunk(parts){
   return true;
  });
 }
-function shardArc(parts,start,count,step,base,peak){
+// —— 按真实跳跃轨迹摆碎片：起跳时机对，整串就能吃到 ——
+const jumpAirtime=v0=>2*v0/GRAVITY;
+const jumpH=(t,v0)=>Math.max(0,v0*t-.5*GRAVITY*t*t);
+function arcAlongJump(parts,startDx,count,speed,v0,from,to){
+ const T=jumpAirtime(v0);
  for(let i=0;i<count;i++){
-  const u=count < 2 ? .5 : i/(count-1);
-  parts.push({kind:"item",type:"shard",dx:start+i*step,alt:base+Math.sin(u*Math.PI)*peak});
+  const u=count < 2 ? .5 : i/(count-1), k=from+(to-from)*u, tt=T*k;
+  parts.push({kind:"item",type:"shard",dx:startDx+speed*tt,alt:jumpH(tt,v0)+34});
  }
 }
-function buildChunk(){
+function groundShards(parts,start,count,step,base){
+ for(let i=0;i<count;i++) parts.push({kind:"item",type:"shard",dx:start+i*step,alt:base});
+}
+// 小跳弧线（轻按）与大跳弧线（长按）用各自的真实轨迹生成
+function buildChunk(v){
  const pro=chapter==="prologue";
  const t=pro?Math.min(1,storyStep/4):Math.min(1,dist/RUN_LENGTH);
  const parts=[];
  const r=Math.random();
+ const tapV=MIN_JUMP_VY, fullV=JUMP_V;      // 轻按 / 长按的起跳初速
 
- // 剧本要求：区域三先出现麦克风与画笔
- if(pro&&storyStep===2&&!specialDone&&dist>520){
+ // 剧本要求：区域三出现麦克风与画笔（挂在小跳弧线的顶点附近）
+ if(pro&&storyStep===2&&!specialDone&&dist>420){
   specialDone=true;
-  parts.push({kind:"item",type:"mic",dx:150,alt:132});
-  parts.push({kind:"item",type:"brush",dx:340,alt:146});
-  shardArc(parts,40,3,60,62,22);
+  const T=jumpAirtime(tapV);
+  parts.push({kind:"item",type:"mic",dx:170+v*T*.5,alt:jumpH(T*.5,tapV)+34});
+  parts.push({kind:"item",type:"brush",dx:170+v*T*.5+v*.9,alt:jumpH(T*.5,tapV)+42});
+  arcAlongJump(parts,120,4,v,tapV,.12,.92);
   return {parts:sanitizeChunk(parts)};
  }
  // 剧情第一步：只有光点，没有压力障碍
  if(pro&&storyStep<1){
-  shardArc(parts,40,4,62,60+Math.random()*18,28);
-  return {parts};
+  groundShards(parts,0,4,62,56);
+  arcAlongJump(parts,300,4,v,tapV,.15,.9);
+  return {parts:parts};
  }
 
- if(r<.24){
-  shardArc(parts,40,5,58,58+Math.random()*20,32);
- }else if(r<.46){
+ if(r<.16){
+  // 贴地一串（直接跑过去就能吃）+ 一条小跳弧线
+  groundShards(parts,0,3,60,54+Math.random()*8);
+  arcAlongJump(parts,200,5,v,tapV,.12,.9);
+ }else if(r<.30){
+  // 小跳弧线：轻点就够
+  arcAlongJump(parts,20,5,v,tapV,.10,.92);
+ }else if(r<.44){
+  // 大跳弧线：长按才吃得全，轻按只能吃到低处几个
+  arcAlongJump(parts,20,5,v,fullV,.06,.94);
+ }else if(r<.72){
+  // 障碍 + 大跳弧线（跨越障碍的奖励线）
   const type=Math.random()<.66?"phone":"alarm";
-  parts.push({kind:"obstacle",type,dx:130});
-  shardArc(parts,40,5,54,OBST[type].h+62,40);      // 碎片摆在跳跃弧线上，奖励起跳
- }else if(r<.62&&t>.25){
-  // 连排双障碍：贴合成一道“压力墙”（总跨度≈124px），低速 0.22s 容差也能一次跳过
-  parts.push({kind:"obstacle",type:"phone",dx:110});
-  parts.push({kind:"obstacle",type:"phone",dx:154});
-  shardArc(parts,60,4,58,100,34);
- }else if(r<.76&&t>.15){
+  parts.push({kind:"obstacle",type,dx:150});
+  arcAlongJump(parts,20,5,v,fullV,.05,.95);
+ }else if(r<.88&&t>.25){
+  // 连排双障碍：贴合成一道“压力墙”，一次大跳越过
+  parts.push({kind:"obstacle",type:"phone",dx:150});
+  parts.push({kind:"obstacle",type:"phone",dx:194});
+  arcAlongJump(parts,20,4,v,fullV,.05,.95);
+ }else if(r<.95&&t>.15){
+  // 特殊灵感：放在小跳顶点，跳一下就能拿
   const type=Math.random()<.5?"mic":"brush";
-  parts.push({kind:"item",type,dx:170,alt:134});
-  shardArc(parts,30,3,62,62,24);
- }else if(r<.88){
-  shardArc(parts,30,3,56,58,20);
-  parts.push({kind:"obstacle",type:Math.random()<.5?"phone":"alarm",dx:250});
+  const T=jumpAirtime(tapV);
+  parts.push({kind:"item",type:type,dx:220+v*T*.5,alt:jumpH(T*.5,tapV)+34});
+  groundShards(parts,0,2,62,56);
  }else{
-  shardArc(parts,80,2,72,66,16);
+  groundShards(parts,60,3,64,56);
+  arcAlongJump(parts,60,3,v,tapV,.2,.8);
  }
  return {parts:sanitizeChunk(parts)};
 }
-function maybeSpawn(v){
- if(dist<nextSpawn) return;
- const chunk=buildChunk(), parts2=chunk.parts, baseX=W+120;
+// 在指定屏幕 x 处投放一个块，返回该块占用的横向长度
+function placeChunk(baseX,v){
+ const parts2=buildChunk(v).parts;
  let maxOff=0;
  for(const p of parts2){
   if(p.kind==="obstacle"){
@@ -715,9 +758,20 @@ function maybeSpawn(v){
    maxOff=Math.max(maxOff,p.dx+34);
   }
  }
- // 安全间距：按“1.35 秒 × 当前速度”留空（≈1.5 倍单跳距离），保证落地后还有时间起跳
- const gap=chapter==="run"?Math.max(280,v*1.35):430;
- nextSpawn=dist+maxOff+gap;
+ return maxOff;
+}
+function chunkGap(v){ return chapter==="run"?Math.max(220,v*0.8):380; }
+function maybeSpawn(v){
+ if(dist<nextSpawn) return;
+ const maxOff=placeChunk(W+120,v);
+ nextSpawn=dist+maxOff+chunkGap(v);
+}
+// 进场首批：直接摆在“约 LEAD_IN 秒后到达”的位置，避免开场长空白
+function leadInSpawn(v){
+ const baseX=Math.max(playerX()+v*LEAD_IN,W*0.36);
+ const maxOff=placeChunk(baseX,v);
+ // 下一块仍从屏幕右缘投放，但保证与首批之间至少留出 chunkGap
+ nextSpawn=dist+Math.max(0,baseX+maxOff+chunkGap(v)-(W+120));
 }
 
 /* ============================================================
@@ -727,16 +781,25 @@ function doJump(){
  if(!playing()||paused) return;
  const grounded=onGround||coyote>0;
  if(grounded){
-  vy=JUMP_V; onGround=false; coyote=0; jumpsLeft=1; jbuf=0;
+  vy=JUMP_V; onGround=false; coyote=0; jumpsLeft=1; jbuf=0; jumpHeld=true;
   burst(playerX(),groundY()-py-2,"#c9fff0",5);
   updateJumpLabel();
  }else if(jumpsLeft>0){
-  vy=JUMP2_V; jumpsLeft=0; jbuf=0;
+  vy=JUMP2_V; jumpsLeft=0; jbuf=0; jumpHeld=true;
   burst(playerX(),groundY()-py-6,"#ffd58b",8);
   updateJumpLabel();
  }else{
   jbuf=JUMP_BUFFER;   // 缓冲：落地瞬间自动补跳
  }
+}
+// 松手 = 小跳：还在上升且没到 MIN_APEX，就直接削到“刚好能升到 MIN_APEX”的速度
+function releaseJump(){
+ if(!jumpHeld) return;
+ jumpHeld=false;
+ if(onGround||vy<=0) return;
+ if(py>=MIN_APEX) return;                       // 已经够高，正常走完弧线
+ const need=Math.sqrt(2*GRAVITY*Math.max(0,MIN_APEX-py));
+ if(need<vy) vy=need;
 }
 function landFx(){ burst(playerX(),groundY()-2,"#dff6ff",5); }
 // 角色受击盒（对称）：横向 px±P_HALF，脚底在 py 高度，头顶 py+62
@@ -751,7 +814,7 @@ function moveEnts(dd,collide){
   o.x-=dd;
   if(!collide) continue;
   if(o.kind==="item"){
-   if(Math.abs(o.x-px)<30&&Math.abs(o.alt-(py+34))<54) collect(o);
+   if(Math.abs(o.x-px)<PICKUP_DX&&Math.abs(o.alt-(py+34))<PICKUP_DY) collect(o);
   }else if(!o.hit&&invuln<=0){
    if(hitTest(o)) hitObstacle(o);
   }
@@ -826,8 +889,8 @@ function answer(i){
  hideScreens();
  if(next<storyCards.length){
   storyStep=next;
-  beginPrologue(next);
-  toast("继续探索 · 灵感 "+(next+1)+"/5");
+  // 选择结束 → 粒子退场 → 浮现下一个场景
+  transitionInto(()=>{ beginPrologue(next); toast("继续探索 · 灵感 "+(next+1)+"/5"); });
  }else{
   storyStep=next;
   $("storyHead").textContent="重新出发";
@@ -842,15 +905,61 @@ function continueFromStoryCard(){
  $("storyNext").blur();
  hideScreens();
  if(storyStep>=storyCards.length){
-  startWindup("正式挑战即将开始","收集灵感 · 避开压力",1.5,launchRun);
+  startWindup("正式挑战即将开始","收集灵感 · 避开压力",1.4,()=>transitionInto(launchRun));
  }else{
   startWindup("✦ 灵感共鸣即将发生 ✦","准备好你的选择",1.35,()=>openQuestion(storyStep));
  }
 }
+
+/* —— 场景切换过渡：旧场景粒子化朝边缘退去 → 新场景慢慢浮现 —— */
+function spawnTransFx(dir){
+ const pal=PALETTES[sceneB]||PALETTES[0];
+ const cols=[pal.light,pal.accent,"#ffffff"];
+ const n=dir==="out"?62:44;
+ for(let i=0;i<n;i++){
+  if(fx.length>150) break;
+  const edge=Math.random()<.5;
+  let x=Math.random()*W, y=Math.random()*H, vx, vy2;
+  if(dir==="out"){
+   // 从画面中间向最近边缘飞出去
+   const cx=W/2, cy=H*.55, ang=Math.atan2(y-cy,x-cx)+(Math.random()-.5)*.5;
+   const sp=260+Math.random()*620;
+   vx=Math.cos(ang)*sp; vy2=Math.sin(ang)*sp;
+   x=cx+Math.cos(ang)*(40+Math.random()*Math.min(W,H)*.45);
+   y=cy+Math.sin(ang)*(40+Math.random()*Math.min(W,H)*.45);
+  }else{
+   // 从边缘往画面里缓缓飘回来
+   const side=Math.floor(Math.random()*4);
+   if(side===0){x=-20;y=Math.random()*H;}else if(side===1){x=W+20;y=Math.random()*H;}
+   else if(side===2){x=Math.random()*W;y=-20;}else{x=Math.random()*W;y=H+20;}
+   const sp=90+Math.random()*240;
+   const ang=Math.atan2(H*.55-y,W/2-x)+(Math.random()-.5)*.4;
+   vx=Math.cos(ang)*sp; vy2=Math.sin(ang)*sp;
+  }
+  fx.push({x,y,vx,vy:vy2,r:1.6+Math.random()*3.4,life:(dir==="out"?.55:.75)+Math.random()*.3,max:1,color:cols[edge?0:1]||cols[2]});
+ }
+}
+function updateFx(dt){
+ let k=0;
+ for(let i=0;i<fx.length;i++){
+  const p=fx[i];
+  p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=(1-1.6*dt); p.vy*=(1-1.6*dt); p.life-=dt;
+  if(p.life>0) fx[k++]=p;
+ }
+ fx.length=k;
+}
+// 退场 → 执行 next()（next 内部的 beginPrologue/launchRun 会自动开始入场渐显）
+function transitionInto(next){
+ if(trans) return;
+ phase="trans";
+ trans={dir:"out",t:0.5,dur:0.5,next:next};
+ spawnTransFx("out");
+ jumpHeld=false;
+}
 function beginPrologue(step){
  chapter="prologue"; storyStep=step;
  dist=0; barPct=-1; speed=P_SPEED; py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE; jbuf=0;
- ents=[]; parts=[]; nextSpawn=560; grace=.5; specialDone=false; slowT=0;
+ ents=[]; parts=[]; nextSpawn=0; grace=.3; specialDone=false; slowT=0;
  sceneA=sceneB=Math.min(step,4); sceneMix=1;
  prologueLen=clamp(storyCards[step][1].length*26,2400,3400);
  narrStep=-1; setNarrative(step); syncCount();
@@ -861,6 +970,8 @@ function beginPrologue(step){
  $("chapter").textContent="剧情跑酷 · 探索 "+(step+1)+"/5";
  $("storyProgress").style.width="0%";
  phase="play"; paused=false;
+ trans={dir:"in",t:0.6,dur:0.6,next:null}; spawnTransFx("in");
+ leadInSpawn(P_SPEED);          // 首批内容约 3 秒后到达，不再开场长空白
  softChange();
  startLoop();
 }
@@ -868,7 +979,7 @@ function launchRun(){
  chapter="run"; phase="play";
  dist=0; barPct=-1; speed=RUN_SPEED_MIN; score=0; scoreAcc=0; scoreBonus=0;
  py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE; jbuf=0;
- ents=[]; parts=[]; nextSpawn=800; grace=.9; slowT=0; invuln=0;
+ ents=[]; parts=[]; nextSpawn=0; grace=.35; slowT=0; invuln=0;
  sceneA=sceneB=3; sceneMix=1;
  hudCache.score=-1; hudCache.lives=-1; hudCache.dist=-1;
  $("narrative").style.display="none";
@@ -877,6 +988,8 @@ function launchRun(){
  $("jump").style.display="block"; $("pause").style.display="block"; jumpLbl=""; updateJumpLabel();
  $("end").style.display="block"; $("endFromPause").style.display="block";
  $("chapter").textContent="无尽模式 · 收集灵感";
+ trans={dir:"in",t:0.65,dur:0.65,next:null}; spawnTransFx("in");
+ leadInSpawn(RUN_SPEED_MIN);
  syncHud(); softChange();
  startLoop();
 }
@@ -1009,17 +1122,36 @@ function update(dt){
  if(shake>0) shake=Math.max(0,shake-dt*46);
  if(invuln>0) invuln=Math.max(0,invuln-dt);
  updateParts(dt);
+ updateFx(dt);
  updateScene(dt);
+ // 过渡计时（两种情况：退场计时完毕才切场景；入场只是渐显）
+ if(trans){
+  trans.t-=dt;
+  if(trans.t<=0){
+   if(trans.dir==="out"){ const fn=trans.next; trans=null; if(fn) fn(); }
+   else{ trans=null; }
+  }
+ }
 
- if(phase!=="play"&&phase!=="windup") return;
+ if(phase!=="play"&&phase!=="windup"&&phase!=="trans") return;
 
  if(grace>0) grace=Math.max(0,grace-dt);
  if(slowT>0) slowT=Math.max(0,slowT-dt);
+
+ if(phase==="trans"){
+  // 退场：镜头减速，不收碰撞、不生成，等粒子飞出去
+  speed=Math.max(90,speed-dt*260);
+  moveEnts(speed*dt,false);
+  updateBar();
+  return;
+ }
+
  const v=slowT>0?speed*.42:speed;
 
  if(chapter==="run"){
   dist+=v*dt;
-  speed=Math.min(RUN_SPEED_MAX,RUN_SPEED_MIN+dist*.012);
+  // 无尽模式：速度渐进上升，越来越快但收敛于 RUN_SPEED_HARD_MAX
+  speed=RUN_SPEED_MIN+(RUN_SPEED_HARD_MAX-RUN_SPEED_MIN)*(1-Math.exp(-dist/RUN_SPEED_K));
   scoreAcc+=dt*12;
  }else{
   dist+=v*dt;
@@ -1042,7 +1174,7 @@ function update(dt){
  vy-=GRAVITY*dt; py+=vy*dt;
  if(py<=0){
   if(!onGround&&vy<-260) landFx();
-  py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE;
+  py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE; jumpHeld=false;
  }else{
   onGround=false; coyote=Math.max(0,coyote-dt);
  }
@@ -1070,8 +1202,9 @@ function resetAll(){
  chapter="prologue"; clock=0;
  storyStep=0; qIndex=0; answers=[-1,-1,-1,-1,-1];
  dist=0; speed=P_SPEED; nextSpawn=0; specialDone=false; prologueLen=2400;
- py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE; jbuf=0;
+ py=0; vy=0; onGround=true; jumpsLeft=2; coyote=COYOTE; jbuf=0; jumpHeld=false;
  invuln=0; flash=0; shake=0; slowT=0; grace=0;
+ trans=null; fx=[];
  score=0; scoreAcc=0; scoreBonus=0; shards=0; mics=0; brushes=0; lives=3;
  ents=[]; parts=[];
  sceneA=sceneB=0; sceneMix=1;
@@ -1085,7 +1218,7 @@ function resetAll(){
 function startGame(){
  hideScreens(); resetAll();
  beginPrologue(0);
- toast("空格 / ↑ / 点击跳跃，可二连跳");
+ toast("轻点小跳 · 按住大跳 · 空中再按一次二连跳");
 }
 function restart(){
  stopLoop(); hideScreens(); resetAll(); startGame();
@@ -1100,7 +1233,7 @@ function resume(){
  lastT=performance.now();
 }
 
-// —— 输入：起跳在“按下”的瞬间生效（pointerdown），不再等松开 ——
+// —— 输入：按下瞬间起跳（不等松开）；松手决定小跳/大跳 ——
 let lastPress=-1e9;
 function pressJump(e){
  if(e&&e.preventDefault) e.preventDefault();
@@ -1112,9 +1245,14 @@ function pressJump(e){
 function bindJump(el){
  if(window.PointerEvent){
   el.addEventListener("pointerdown",pressJump,{passive:false});
+  el.addEventListener("pointerup",releaseJump);
+  el.addEventListener("pointercancel",releaseJump);
+  el.addEventListener("pointerleave",releaseJump);
  }else{
   el.addEventListener("touchstart",pressJump,{passive:false});
+  el.addEventListener("touchend",releaseJump);
   el.addEventListener("mousedown",pressJump,{passive:false});
+  el.addEventListener("mouseup",releaseJump);
  }
  el.addEventListener("contextmenu",e=>e.preventDefault());
 }
@@ -1126,6 +1264,10 @@ $("app").addEventListener("pointerdown",e=>{
  if(!playing()||paused) return;
  pressJump(e);
 });
+// 松手（任意位置）都能结束长按 → 小跳
+window.addEventListener("pointerup",()=>releaseJump());
+window.addEventListener("pointercancel",()=>releaseJump());
+window.addEventListener("blur",()=>releaseJump());
 
 window.addEventListener("keydown",e=>{
  const isJump=e.code==="Space"||e.code==="ArrowUp"||e.code==="KeyW";
