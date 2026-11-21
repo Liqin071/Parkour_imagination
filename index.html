@@ -93,6 +93,7 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
  <div class="kicker">A JOURNEY TO REBUILD INSPIRATION</div><h1>创想<span>大师</span></h1>
  <p class="subtitle">灵感核心失控，世界里的色彩、声音与奇妙想法散落各处。<br>跟随小精灵出发，把灵感重新带回世界。</p>
  <button class="primary" id="begin">开启灵感旅程</button>
+ <button class="secondary" id="skipToRun" style="display:none;margin-top:10px;font-size:13px;opacity:.85">⚡ 直接进入无尽模式（测试用）</button>
  <div class="hint">电脑：空格 / ↑ 跳跃（<b>轻点小跳、按住大跳</b>，空中再按一次二连跳）· 手机：点右下按钮<br>第一章就是跑酷探索：边跑边看剧情变化，跳跃穿越灵感世界</div>
 </section>
 
@@ -168,6 +169,14 @@ const HIT_GRACE_Y=4;    // 纵向宽容：脚底高出障碍顶 4px 内仍算撞
 /* —— 受击反馈：只闪白，不做顿帧/震屏（避免被当成“卡顿”） —— */
 const HIT_SHAKE=0;      // 想加回震屏就改成 8~12
 const RUN_ENDLESS=true; // 正式段为无尽模式：不再到点自动结算，改用「结束」按钮
+
+/* —— 测试用快捷入口总开关 ——
+   体验「无尽模式」不必先跑完 4 章剧情 + 5 道题：
+   方式 1：开始界面会多出一个「⚡ 直接进入无尽模式」按钮（本开关为 true 时才出现）
+   方式 2：直接在地址栏加 ?debug=run 或 ?debug=endless，打开就进无尽
+   进入后按「再次出发 / 重新开始」也会继续走无尽，方便反复测。
+   正式发布想彻底关掉：把下面这行改成 false，按钮和 ?debug=run 会同时失效。 */
+const DEBUG_ENTRY=true;
 
 
 /* ============================================================
@@ -1863,7 +1872,18 @@ function startGame(){
  toast("轻点小跳 · 按住大跳 · 空中再按一次二连跳");
 }
 function restart(){
- stopLoop(); hideScreens(); resetAll(); startGame();
+ stopLoop(); hideScreens(); resetAll();
+ if(QUICK_RUN){ launchRun(); toast("快速模式：又进无尽（去掉地址里的 ?debug= 就恢复正常流程）"); return; }
+ startGame();
+}
+/* —— 测试入口：跳过 4 章剧情 + 5 道题，直接进无尽模式 ——
+   QUICK_RUN 一旦打开，之后每次「再次出发 / 重新开始」也会继续进无尽，方便连续测。
+   一次刷新（去掉 ?debug=）即完全恢复原流程，不写入任何本地存储。 */
+let QUICK_RUN=false;
+function enterEndlessNow(){
+ if(!DEBUG_ENTRY) return;
+ QUICK_RUN=true; stopLoop(); hideScreens(); resetAll();
+ launchRun(); toast("快速模式：直接进入无尽模式");
 }
 function pause(){
  if(!playing()||paused) return;
@@ -1937,6 +1957,7 @@ document.addEventListener("visibilitychange",()=>{
 window.addEventListener("blur",()=>{ if(playing()&&!paused) pause(); });
 
 $("begin").onclick=e=>{ e.currentTarget.blur(); startGame(); };
+$("skipToRun").onclick=e=>{ e.currentTarget.blur(); enterEndlessNow(); };
 $("storyNext").onclick=continueFromStoryCard;
 $("pause").onclick=pause;
 $("resume").onclick=resume;
@@ -2012,6 +2033,24 @@ try{
    answers=[0,1,2,0,2]; shards=40; mics=1; brushes=1; dist=8000; score=1500;
    finish();
   },60);
+ }
+}catch(e){}
+
+/* 测试用快捷入口（受 DEBUG_ENTRY 总开关控制）
+   · 开始界面显示「⚡ 直接进入无尽模式」按钮
+   · 地址栏 ?debug=run / ?debug=endless / ?endless 打开即进无尽
+   关掉方式：把上方 const DEBUG_ENTRY 改成 false —— 按钮不再出现、参数也不再被识别 */
+try{
+ const showEntry=()=>{
+  if(!DEBUG_ENTRY) return;
+  const b=$("skipToRun"); if(b) b.style.display="inline-block";
+ };
+ showEntry();
+ if(DEBUG_ENTRY && typeof location!=="undefined"){
+  const q=(location.search||"")+"&"+(location.hash||"");
+  if(/(?:^|[?&#])debug=(?:run|endless)(?:[&#]|$)/i.test(q) || /(?:^|[?&#])endless(?:[&#]|$)/i.test(q)){
+   setTimeout(()=>{ try{ enterEndlessNow(); }catch(e){} }, 80);
+  }
  }
 }catch(e){}
 })();
