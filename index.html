@@ -512,8 +512,16 @@ function avatarCands(key){
  const base=String(rel).replace(/\.(png|webp|jpe?g)$/i,"");
  return [base+".webp",base+".png",base+".jpg"];
 }
-ART.avatarOK={};                    // key → 已经确认能加载的地址（Loading 屏预取成功后写入）
+ART.avatarOK={};                    // key → 已经确认能加载的完整地址（Loading 屏预取成功后写入）
+ART.avatarEl={};                    // key → 预取用的 Image 元素（结算页直接复用，不重复请求）
 ART.warm=[];                        // 预取中的 Image 引用，避免被 GC 掉（后台下载要继续）
+/* —— 人格立绘拼图（atlas）——
+   慢网实测：同一域名下 7 张图是**逐个**下载的，每个请求固定 2~3 秒延迟，
+   合计要 17 秒；拼成一张只需 1 次请求（约 3 秒），所以优先走这条。
+   顺序必须和 验证脚本/_make_atlas.cjs 里的 ORDER 一致。 */
+const AVATAR_ATLAS_FILE="avatar/atlas.webp";
+const AVATAR_ATLAS_ORDER=["creator","collector","empath","historian","muse","painter","pioneer"];
+ART.atlas=null;                     // 拼图 Image（加载好之后结算页从上面裁一块）
 function artLoad(path){
  const im=new Image();
  im.onload=()=>{ im.ok=true; };
@@ -591,22 +599,37 @@ function preloadAvatars(){
  if(!keys.length){ BOOT.P.avatar=1; checkBootReady(); return; }
  let n=0;
  const step=()=>{ n++; BOOT.P.avatar=n/keys.length; bootPaint("正在准备人格立绘 "+n+"/"+keys.length); checkBootReady(); };
- keys.forEach(k=>{
-  const cands=avatarCands(k);
-  let ci=0;
-  const next=()=>{
-   if(ci>=cands.length){ step(); return; }
-   const rel=cands[ci++];
-   try{
-    const im=new Image();
-    ART.warm.push(im);                          // 留个引用，防止被回收导致后台下载中断
-    im.onload=()=>{ ART.avatarOK[k]=rel; step(); };
+ // —— 首选：一张拼图，1 次请求（慢网下比 7 次请求快 5 倍以上）——
+ const at=new Image();
+ ART.warm.push(at);
+ let fellBack=false;
+ const fallback=()=>{ if(fellBack) return; fellBack=true; perFile(); };
+ at.onload=()=>{
+  if(!(at.naturalWidth>0)){ fallback(); return; }
+  ART.atlas=at;
+  keys.forEach(k=>{ ART.avatarOK[k]=artURL(AVATAR_ATLAS_FILE); });
+  BOOT.P.avatar=1; bootPaint("人格立绘已就绪"); checkBootReady();
+ };
+ at.onerror=fallback;
+ try{ at.src=artURL(AVATAR_ATLAS_FILE); }catch(e){ fallback(); }
+ // —— 兜底：拼图缺失时退回逐张下载（原来的逻辑）——
+ function perFile(){
+  keys.forEach(k=>{
+   const cands=avatarCands(k);
+   let ci=0;
+   const im=new Image();
+   ART.avatarEl[k]=im;                        // 结算页会直接复用这个元素，不会再发一次请求
+   ART.warm.push(im);                         // 留引用，防止被回收导致后台下载中断
+   const next=()=>{
+    if(ci>=cands.length){ step(); return; }
+    const rel=cands[ci++];
+    im.onload=()=>{ ART.avatarOK[k]=artURL(rel); step(); };
     im.onerror=next;
-    im.src=artURL(rel);
-   }catch(e){ next(); }
-  };
-  next();
- });
+    try{ im.src=artURL(rel); }catch(e){ next(); }
+   };
+   next();
+  });
+ }
 }
 function checkBootReady(){
  if(BOOT.done) return;
@@ -1728,35 +1751,76 @@ function finish(){
  $("avatarCard").style.setProperty("--accent",t.color);
  $("resultPanel").style.setProperty("--accent",t.color);
  {
-  // 人格立绘：优先 .webp（约 65KB，秒开），没有就退回 .png（原图 ~1.2MB）
+  // 人格立绘：Loading 屏已经把图下好了，这里**直接复用那个 img 元素**——
+  // 同一个元素 = 同一次请求，绝不会为了同一张图再发一次（慢网下这能省掉几秒）。
   const el=$("avatar");
   const key=String(t.en).toLowerCase();
-  const cands=avatarCands(key);
-  const cached=ART.avatarOK[key];               // Loading 屏预取过的地址，直接用（几乎无延迟）
-  const list=cached?[cached].concat(cands.filter(c=>c!==cached)):cands;
   const dbg=(typeof location!=="undefined")&&/debug/i.test(location.search||"");
   el.textContent=t.emoji;
-  let ci=0;
-  const tryNext=()=>{
-   if(ci>=list.length){ el.textContent=t.emoji; if(dbg) document.title="AVATAR-FAIL:"+list.join("|"); return; }
-   const url=artURL(list[ci++]);
-   const rel=list[ci-1];
-   try{
-    const probe=new Image();
-    probe.onload=()=>{
-     ART.avatarOK[key]=rel;                    // 记住这次成功的路径，下次结算直接用
-     el.innerHTML='<img src="'+url+'" alt="'+t.name+'">';
-     if(dbg) document.title="AVATAR-IMG:"+url;
-    };
-    probe.onerror=tryNext;
-    probe.src=url;
-    if(dbg) document.title="AVATAR-LOADING:"+url;
-   }catch(e){
-    if(dbg) document.title="AVATAR-THROW:"+e.message;
-    tryNext();
+  (function(){
+   let settled=false;
+   const put=(node)=>{
+    if(settled) return; settled=true;
+    try{ el.textContent=""; el.appendChild(node); }
+    catch(e){ el.innerHTML='<img src="'+node.src+'" alt="'+t.name+'">'; }
+    node.alt=t.name;
+    if(dbg) document.title="AVATAR-IMG:"+(node.currentSrc||node.src);
+   };
+   // —— 路线 0：拼图已在内存里 → 直接裁一块出来，0 网络请求、0 等待 ——
+   const atlas=ART.atlas, ai=AVATAR_ATLAS_ORDER.indexOf(key);
+   if(atlas&&atlas.naturalWidth>0&&ai>=0){
+    try{
+     const tw=atlas.naturalWidth/AVATAR_ATLAS_ORDER.length, th=atlas.naturalHeight;
+     const cvs=document.createElement("canvas");
+     cvs.width=Math.round(tw); cvs.height=Math.round(th);
+     const g2=cvs.getContext("2d");
+     g2.imageSmoothingQuality="high";
+     g2.drawImage(atlas,Math.round(ai*tw),0,Math.round(tw),Math.round(th),0,0,cvs.width,cvs.height);
+     let data="";
+     try{ data=cvs.toDataURL("image/webp",0.92); }catch(e){}
+     if(!/^data:image\//.test(data)){ try{ data=cvs.toDataURL("image/png"); }catch(e){} }
+     if(/^data:image\//.test(data)){
+      const im=new Image();
+      im.src=data;
+      put(im);
+      if(dbg) document.title="AVATAR-ATLAS:"+key+" "+cvs.width+"x"+cvs.height;
+      return;
+     }
+    }catch(e){ if(dbg) document.title="AVATAR-ATLAS-ERR:"+e.message; }
    }
-  };
-  tryNext();
+   // —— 路线 A：预取过 → 直接把这个元素塞进结算页（内存里已解码，基本 0 延迟）
+   const pre=ART.avatarEl[key];
+   if(pre){
+    if(pre.complete&&pre.naturalWidth>0){ put(pre); return; }
+    if(!pre.complete){
+     const onOk=()=>{ pre.removeEventListener("error",onErr); if(pre.naturalWidth>0){ put(pre); } else { onErr(); } };
+     const onErr=()=>{ pre.removeEventListener("load",onOk); if(!settled){ settled=true; el.textContent=t.emoji; if(dbg) document.title="AVATAR-PREFETCH-FAIL"; } };
+     pre.addEventListener("load",onOk); pre.addEventListener("error",onErr);
+     if(dbg) document.title="AVATAR-WAIT-PREFETCH:"+pre.src;
+     return;                      // 正在下的那次请求会把它填上，不用另发
+    }
+   }
+   // —— 路线 B：没有预取（或预取失败）→ 按候选链现下
+   const cands=avatarCands(key);
+   let ci=0;
+   const tryNext=()=>{
+    if(ci>=cands.length){ el.textContent=t.emoji; if(dbg) document.title="AVATAR-FAIL:"+cands.join("|"); return; }
+    const rel=cands[ci++];
+    const url=artURL(rel);
+    try{
+     const im=new Image();
+     im.alt=t.name;
+     im.onload=()=>{ ART.avatarOK[key]=url; put(im); };
+     im.onerror=tryNext;
+     im.src=url;
+     if(dbg) document.title="AVATAR-LOADING:"+url;
+    }catch(e){
+     if(dbg) document.title="AVATAR-THROW:"+e.message;
+     tryNext();
+    }
+   };
+   tryNext();
+  })();
  }
  $("typeEnglish").textContent=t.en;
  $("typeName").textContent=t.name; $("typeQuote").textContent="「"+t.quote+"」";
