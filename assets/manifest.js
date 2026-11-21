@@ -1,5 +1,6 @@
 /* 美术资源清单（由 验证脚本/_import_art.cjs 生成） */
 window.ART_MANIFEST = {
+  v: "1795252266057",
   bg: {
     "1": {
       "base": "bg/bg1_base.png",
