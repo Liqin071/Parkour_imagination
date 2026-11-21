@@ -197,13 +197,14 @@ const HIT_GRACE_Y=4;    // 纵向宽容：脚底高出障碍顶 4px 内仍算撞
 const HIT_SHAKE=0;      // 想加回震屏就改成 8~12
 const RUN_ENDLESS=true; // 正式段为无尽模式：不再到点自动结算，改用「结束」按钮
 
-/* —— 测试用快捷入口总开关 ——
-   体验「无尽模式」不必先跑完 4 章剧情 + 5 道题：
-   方式 1：开始界面会多出一个「⚡ 直接进入无尽模式」按钮（本开关为 true 时才出现）
-   方式 2：直接在地址栏加 ?debug=run 或 ?debug=endless，打开就进无尽
-   进入后按「再次出发 / 重新开始」也会继续走无尽，方便反复测。
-   正式发布想彻底关掉：把下面这行改成 false，按钮和 ?debug=run 会同时失效。 */
-const DEBUG_ENTRY=true;   // ← 正式发布时改成 false
+/* —— 测试通道总开关（正式发布 = false）——
+   改回 true 会一次性恢复下面三个调试入口，方便以后自己测：
+     1) 开始界面多出一个「⚡ 直接进入无尽模式（测试用）」按钮
+     2) 地址栏加 ?debug=run / ?debug=endless，打开即进无尽（跳过 4 章剧情 + 5 道题）
+     3) 地址栏加 ?debug=result，直接跳到结算页（查人格立绘与排版）
+   置 false 时：按钮不渲染、三个参数全部忽略，玩家只能走正常流程。
+   不写 localStorage，所以玩家设备上不会有残留状态。 */
+const DEBUG_ENTRY=false;
 
 
 /* ============================================================
@@ -2233,9 +2234,9 @@ try{
   manifest:!!window.ART_MANIFEST, manifestVer:(window.ART_MANIFEST&&window.ART_MANIFEST.v)||null });
 }catch(e){}
 
-// 开发用：地址加 ?debug=result 直接跳到结算页（方便检查立绘与排版）
+// 开发用：地址加 ?debug=result 直接跳到结算页（方便检查立绘与排版）——同样受 DEBUG_ENTRY 控制
 try{
- if((typeof location!=="undefined")&&/debug=result/i.test(location.search||"")){
+ if(DEBUG_ENTRY && (typeof location!=="undefined") && /debug=result/i.test(location.search||"")){
   setTimeout(()=>{
    try{ bootFinish("debug-result"); }catch(e){}
    answers=[0,1,2,0,2]; shards=40; mics=1; brushes=1; dist=8000; score=1500;
@@ -2244,10 +2245,10 @@ try{
  }
 }catch(e){}
 
-/* 测试用快捷入口（受 DEBUG_ENTRY 总开关控制）
+/* 测试通道（受 DEBUG_ENTRY 总开关控制，正式发布时全部关闭）
    · 开始界面显示「⚡ 直接进入无尽模式」按钮
    · 地址栏 ?debug=run / ?debug=endless / ?endless 打开即进无尽
-   关掉方式：把上方 const DEBUG_ENTRY 改成 false —— 按钮不再出现、参数也不再被识别 */
+   开启方式：把上方 const DEBUG_ENTRY 改成 true */
 try{
  const showEntry=()=>{
   if(!DEBUG_ENTRY) return;
