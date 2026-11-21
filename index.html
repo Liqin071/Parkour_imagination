@@ -1617,30 +1617,33 @@ function finish(){
  $("avatarCard").style.setProperty("--accent",t.color);
  $("resultPanel").style.setProperty("--accent",t.color);
  {
-  // 人格立绘：路径来自 AVATAR_DEFAULT（不依赖清单），加载失败才回退 emoji
-  const el=$("avatar"), rel=ART.avatar[String(t.en).toLowerCase()]||AVATAR_DEFAULT[String(t.en).toLowerCase()];
-  const src=rel?artURL(rel):null;
+  // 人格立绘：优先 .webp（约 65KB，秒开），没有就退回 .png（原图 ~1.2MB）
+  const el=$("avatar");
+  const key=String(t.en).toLowerCase();
+  const rel=ART.avatar[key]||AVATAR_DEFAULT[key]||("avatar/"+key+".png");
+  const base=rel.replace(/\.(png|webp|jpe?g)$/i,"");
+  const cands=[base+".webp",base+".png",base+".jpg"];
   const dbg=/debug/i.test(location.search||"");
   el.textContent=t.emoji;
-  if(!src){ if(dbg) document.title="AVATAR-NOPATH:"+t.en; }
-  else{
+  let ci=0;
+  const tryNext=()=>{
+   if(ci>=cands.length){ el.textContent=t.emoji; if(dbg) document.title="AVATAR-FAIL:"+cands.join("|"); return; }
+   const url=artURL(cands[ci++]);
    try{
     const probe=new Image();
     probe.onload=()=>{
-     el.innerHTML='<img src="'+src+'" alt="'+t.name+'">';
-     if(dbg) document.title="AVATAR-IMG:"+src;
+     el.innerHTML='<img src="'+url+'" alt="'+t.name+'">';
+     if(dbg) document.title="AVATAR-IMG:"+url;
     };
-    probe.onerror=()=>{
-     el.textContent=t.emoji;
-     if(dbg) document.title="AVATAR-FAIL:"+src;
-    };
-    probe.src=src;
-    if(dbg) document.title="AVATAR-LOADING:"+src;
+    probe.onerror=tryNext;
+    probe.src=url;
+    if(dbg) document.title="AVATAR-LOADING:"+url;
    }catch(e){
-    el.textContent=t.emoji;
     if(dbg) document.title="AVATAR-THROW:"+e.message;
+    tryNext();
    }
-  }
+  };
+  tryNext();
  }
  $("typeEnglish").textContent=t.en;
  $("typeName").textContent=t.name; $("typeQuote").textContent="「"+t.quote+"」";
