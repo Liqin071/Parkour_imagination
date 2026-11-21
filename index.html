@@ -84,8 +84,35 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 #question .panel{animation:panelIn .36s cubic-bezier(.2,.9,.3,1) both}
 #story .panel{animation:panelIn .3s cubic-bezier(.2,.9,.3,1) both}
 @keyframes panelIn{from{opacity:0;transform:translateY(22px) scale(.97)}to{opacity:1;transform:none}}
+/* —— 首次加载用的 Loading 层 ——
+   为什么能"不卡"：转圈和光晕都是 CSS 动画，即使主线程在烘焙精灵/解析脚本，
+   这些动画仍在合成器上跑，所以用户看到的永远是"在动"，而不是白屏或冻结画面。 */
+#boot{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;
+ background:radial-gradient(ellipse at 50% 32%,#283b5d,#11152b 62%,#090d1d);
+ transition:opacity .5s ease,visibility .5s;animation:bootfallback .6s ease 9s forwards}
+#boot.hide{opacity:0;visibility:hidden;pointer-events:none}
+@keyframes bootfallback{to{opacity:0;visibility:hidden}}   /* 兜底：万一脚本没跑起来，9 秒后也自动让开 */
+.bootbox{width:min(320px,74vw);text-align:center}
+.bootring{position:relative;width:72px;height:72px;margin:0 auto 22px}
+.bootring i{position:absolute;inset:0;border-radius:50%;border:2px solid transparent;border-top-color:#9fffd0;animation:bootspin 1.15s linear infinite}
+.bootring i:last-child{inset:10px;border-top-color:#ffd58b;animation-duration:1.7s;animation-direction:reverse}
+.bootring:after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#9fffd0;box-shadow:0 0 18px #9fffd0;animation:bootpulse 1.5s ease-in-out infinite}
+@keyframes bootspin{to{transform:rotate(360deg)}}
+@keyframes bootpulse{50%{transform:scale(.55);opacity:.55}}
+.bootname{font-size:19px;font-weight:1000;letter-spacing:.2em;color:#eafff8;text-shadow:0 0 22px #9fffd055}
+.bootname span{color:#ffd58b}
+.bootbar{height:4px;border-radius:9px;background:#ffffff1f;overflow:hidden;margin:18px 0 10px}
+.bootbar b{display:block;height:100%;width:0%;border-radius:9px;background:linear-gradient(90deg,#9fffd0,#ffd58b);box-shadow:0 0 12px #9fffd0aa;transition:width .32s ease}
+.boottip{font-size:11px;letter-spacing:.14em;color:#8fa4c0;min-height:15px}
 </style></head>
-<body><div id="app">
+<body>
+<div id="boot"><div class="bootbox">
+ <div class="bootring"><i></i><i></i></div>
+ <div class="bootname">创想<span>大师</span></div>
+ <div class="bootbar"><b id="bootFill"></b></div>
+ <div class="boottip" id="bootTip">正在唤醒灵感世界…</div>
+</div></div>
+<div id="app">
 <canvas id="world"></canvas>
 <div class="top"><div class="brand"><i class="logo"></i><b>IMAGINATION WORLD / 创想大师</b></div><span class="pill" id="chapter">灵感世界 · 序章</span></div>
 
@@ -130,7 +157,7 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 /* 美术清单用最普通的静态 <script> 加载（file:// 也能用）；
    如果被缓存成旧版，主脚本里的 bootArt() 会再补一次带时间戳的加载（仅 http(s)） */
 </script>
-<script src="assets/manifest.js"></script>
+<script src="assets/manifest.js" defer></script>
 <script>
 (()=>{
 "use strict";
@@ -176,7 +203,7 @@ const RUN_ENDLESS=true; // 正式段为无尽模式：不再到点自动结算�
    方式 2：直接在地址栏加 ?debug=run 或 ?debug=endless，打开就进无尽
    进入后按「再次出发 / 重新开始」也会继续走无尽，方便反复测。
    正式发布想彻底关掉：把下面这行改成 false，按钮和 ?debug=run 会同时失效。 */
-const DEBUG_ENTRY=true;
+const DEBUG_ENTRY=true;   // ← 正式发布时改成 false
 
 
 /* ============================================================
@@ -478,6 +505,14 @@ function artVerQuery(){
  return "";
 }
 function artURL(path){ return ART_BASE+path+artVerQuery(); }
+/* 人格立绘的候选地址：先 .webp（约 65KB，秒开），再 .png/.jpg（原图 1MB+，只在 webp 缺失时兜底）。
+   Loading 屏的预加载和结算页都走这一个函数，保证两边永远一致。 */
+function avatarCands(key){
+ const rel=ART.avatar[key]||AVATAR_DEFAULT[key]||("avatar/"+key+".png");
+ const base=String(rel).replace(/\.(png|webp|jpe?g)$/i,"");
+ return [base+".webp",base+".png",base+".jpg"];
+}
+ART.avatarOK={};                    // key → 已经确认能加载的地址（Loading 屏预取成功后写入）
 function artLoad(path){
  const im=new Image();
  im.onload=()=>{ im.ok=true; };
@@ -511,6 +546,71 @@ function loadArt(){
    ART.obst[g]=(M.obstacle[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src), h:(s&&s.h)||52 }));
  }
  return true;
+}
+/* ============================================================
+   5c. Loading 屏：把"首次加载干等几秒"变成看得见的进度
+   —— 进度由真实事件推进（首帧渲染 / 美术清单 / 立绘预取），
+      同时有一条按时间爬升的保底速度；就绪或超时都会自动让开。
+   ============================================================ */
+const BOOT={ done:false, minMs:700, maxMs:3000, softMs:1500, P:{frame:0,manifest:0,avatar:0}, W:{frame:25,manifest:15,avatar:60}, tip:"正在唤醒灵感世界…" };
+BOOT.t0=(typeof performance!=="undefined"&&performance.now)?performance.now():Date.now();
+function bootNow(){ return (typeof performance!=="undefined"&&performance.now)?performance.now():Date.now(); }
+function bootPct(){
+ const s=BOOT.W.frame*BOOT.P.frame + BOOT.W.manifest*BOOT.P.manifest + BOOT.W.avatar*BOOT.P.avatar;
+ const ramp=Math.min(94, 8+(bootNow()-BOOT.t0)/BOOT.maxMs*88);   // 保底爬升：进度条永不僵住
+ return Math.max(s,ramp);
+}
+function bootPaint(tip){
+ if(tip) BOOT.tip=tip;
+ try{
+  const f=document.getElementById("bootFill"); if(f) f.style.width=Math.min(100,bootPct()).toFixed(1)+"%";
+  const t=document.getElementById("bootTip"); if(t&&BOOT.tip) t.textContent=BOOT.tip;
+ }catch(e){}
+}
+function bootFinish(reason){
+ if(BOOT.done) return; BOOT.done=true;
+ try{
+  BOOT.reason=reason; BOOT.ms=Math.round(bootNow()-BOOT.t0);
+  bootPaint("准备就绪");
+  const f=document.getElementById("bootFill"); if(f) f.style.width="100%";
+  const b=(function(){ try{ return document.getElementById("boot"); }catch(e){ return null; } })();
+  const close=()=>{
+   if(!b) return;
+   b.classList.add("hide");
+   try{ b.style.pointerEvents="none"; }catch(e){}
+   setTimeout(()=>{ try{ b.style.display="none"; }catch(e){} },620);
+  };
+  const left=BOOT.minMs-(bootNow()-BOOT.t0);
+  if(left>0) setTimeout(close,left); else close();
+ }catch(e){}
+}
+// 立绘预取：Loading 期间把 7 张人格图下进浏览器缓存，结算页就能"秒出"
+function preloadAvatars(){
+ const keys=Object.keys(AVATAR_DEFAULT);
+ if(!keys.length){ BOOT.P.avatar=1; checkBootReady(); return; }
+ let n=0;
+ const step=()=>{ n++; BOOT.P.avatar=n/keys.length; bootPaint("正在准备人格立绘 "+n+"/"+keys.length); checkBootReady(); };
+ keys.forEach(k=>{
+  const cands=avatarCands(k);
+  let ci=0;
+  const next=()=>{
+   if(ci>=cands.length){ step(); return; }
+   const rel=cands[ci++];
+   try{
+    const im=new Image();
+    im.onload=()=>{ ART.avatarOK[k]=rel; step(); };
+    im.onerror=next;
+    im.src=artURL(rel);
+   }catch(e){ next(); }
+  };
+  next();
+ });
+}
+function checkBootReady(){
+ if(BOOT.done) return;
+ // 立绘不是开局必需（要到结算页才用），所以只软等 softMs：等不到就让开，剩下的继续在后台下
+ const waitAvatar = BOOT.P.avatar<1 && (bootNow()-BOOT.t0)<BOOT.softMs;
+ if(BOOT.P.frame>=1 && BOOT.P.manifest>=1 && !waitAvatar) bootFinish(BOOT.P.avatar>=1?"ready":"ready-avatar-bg");
 }
 // 美术清单：静态 <script> 先加载一次；如果没有/版本旧，再按需补一次（仅 http(s) 下带时间戳防缓存）
 function bootArt(){
@@ -1629,18 +1729,20 @@ function finish(){
   // 人格立绘：优先 .webp（约 65KB，秒开），没有就退回 .png（原图 ~1.2MB）
   const el=$("avatar");
   const key=String(t.en).toLowerCase();
-  const rel=ART.avatar[key]||AVATAR_DEFAULT[key]||("avatar/"+key+".png");
-  const base=rel.replace(/\.(png|webp|jpe?g)$/i,"");
-  const cands=[base+".webp",base+".png",base+".jpg"];
+  const cands=avatarCands(key);
+  const cached=ART.avatarOK[key];               // Loading 屏预取过的地址，直接用（几乎无延迟）
+  const list=cached?[cached].concat(cands.filter(c=>c!==cached)):cands;
   const dbg=(typeof location!=="undefined")&&/debug/i.test(location.search||"");
   el.textContent=t.emoji;
   let ci=0;
   const tryNext=()=>{
-   if(ci>=cands.length){ el.textContent=t.emoji; if(dbg) document.title="AVATAR-FAIL:"+cands.join("|"); return; }
-   const url=artURL(cands[ci++]);
+   if(ci>=list.length){ el.textContent=t.emoji; if(dbg) document.title="AVATAR-FAIL:"+list.join("|"); return; }
+   const url=artURL(list[ci++]);
+   const rel=list[ci-1];
    try{
     const probe=new Image();
     probe.onload=()=>{
+     ART.avatarOK[key]=rel;                    // 记住这次成功的路径，下次结算直接用
      el.innerHTML='<img src="'+url+'" alt="'+t.name+'">';
      if(dbg) document.title="AVATAR-IMG:"+url;
     };
@@ -1883,6 +1985,7 @@ let QUICK_RUN=false;
 function enterEndlessNow(){
  if(!DEBUG_ENTRY) return;
  QUICK_RUN=true; stopLoop(); hideScreens(); resetAll();
+ try{ bootFinish("quick-entry"); }catch(e){}   // 测试入口就别等 Loading 了
  launchRun(); toast("快速模式：直接进入无尽模式");
 }
 function pause(){
@@ -2022,14 +2125,53 @@ $("share").onclick=()=>{
 };
 
 window.addEventListener("resize",resize);
+
+/* —— 启动：Loading 屏 → 载入清单 → 渲染首帧 → 后台预取立绘 → 让开 ——
+   顺序刻意这样排：先让 Loading 屏画出来（它已经在 HTML 里了），
+   再干重活，玩家看到的始终是"转圈在动"，而不是白屏或冻住的画面。 */
+bootPaint("正在唤醒灵感世界…");
 bootArt();
-resize();
-requestAnimationFrame(()=>{ startLoop(); });   // 首屏待机动画（轻量）
+resize();                                        // 首帧渲染 + 精灵烘焙都在 Loading 屏后面完成
+BOOT.P.frame=1; bootPaint("正在点亮灵感世界…"); checkBootReady();
+requestAnimationFrame(()=>{ startLoop(); });     // 首屏待机动画（轻量）
+
+// 美术清单是 defer 加载的：轮询等它到位（最多等到超时），到了就更新进度
+function pollManifest(){
+ if(BOOT.done) return;
+ try{ if(window.ART_MANIFEST){ BOOT.P.manifest=1; checkBootReady(); return; } }catch(e){}
+ // 名单丢失/404 的兜底：1.5s 还没来就当作“不需要清单”（立绘有内置默认路径，不影响显示）
+ if(bootNow()-BOOT.t0 > 1500){ BOOT.P.manifest=1; bootPaint("正在点亮灵感世界…"); checkBootReady(); return; }
+ setTimeout(pollManifest,60);
+}
+pollManifest();
+// 进度条自己也要会走：没有新事件时按时间匀速爬（否则慢网下会停在 25% 好两秒）
+function bootTick(){
+ if(BOOT.done) return;
+ bootPaint();
+ setTimeout(bootTick,140);
+}
+bootTick();
+// 立绘预取（后台并行，不挡游戏开始；超时会统一让开，剩下的继续在后台下）
+preloadAvatars();
+// 软超时：立绘软等 BOOT.softMs 还没下完就先让玩家进游戏（图继续在后台下）
+setTimeout(()=>{
+ if(!BOOT.done && BOOT.P.avatar<1) bootPaint("人格立绘仍在后台加载…");
+ checkBootReady();
+}, BOOT.softMs+40);
+// 硬超时：无论网络多慢，最多等 BOOT.maxMs 就让玩家进游戏
+setTimeout(()=>{ bootFinish("timeout"); }, BOOT.maxMs);
+// 调试用：控制台里 __BOOT() 能看到加载耗时明细
+try{
+ window.__BOOT=()=>({ reason:BOOT.reason||null, ms:BOOT.ms||Math.round(bootNow()-BOOT.t0),
+  progress:JSON.parse(JSON.stringify(BOOT.P)), avatarOK:Object.keys(ART.avatarOK),
+  manifest:!!window.ART_MANIFEST, manifestVer:(window.ART_MANIFEST&&window.ART_MANIFEST.v)||null });
+}catch(e){}
 
 // 开发用：地址加 ?debug=result 直接跳到结算页（方便检查立绘与排版）
 try{
  if((typeof location!=="undefined")&&/debug=result/i.test(location.search||"")){
   setTimeout(()=>{
+   try{ bootFinish("debug-result"); }catch(e){}
    answers=[0,1,2,0,2]; shards=40; mics=1; brushes=1; dist=8000; score=1500;
    finish();
   },60);
@@ -2049,7 +2191,10 @@ try{
  if(DEBUG_ENTRY && typeof location!=="undefined"){
   const q=(location.search||"")+"&"+(location.hash||"");
   if(/(?:^|[?&#])debug=(?:run|endless)(?:[&#]|$)/i.test(q) || /(?:^|[?&#])endless(?:[&#]|$)/i.test(q)){
-   setTimeout(()=>{ try{ enterEndlessNow(); }catch(e){} }, 80);
+   setTimeout(()=>{
+    try{ enterEndlessNow(); }
+    catch(e){ try{ (window.__entryErr=window.__entryErr||[]).push(String(e&&e.message||e)); }catch(_){} }
+   }, 80);
   }
  }
 }catch(e){}
