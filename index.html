@@ -37,20 +37,33 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 .choices{display:grid;gap:9px;margin-top:18px}.choice{display:flex;gap:12px;align-items:center;text-align:left;padding:13px;border:1px solid #ffffff24;border-radius:13px;background:#ffffff0a;line-height:1.55;font-size:13px;transition:background .15s,transform .1s}.choice:active{transform:scale(.985);background:#9fffd022}.letter{width:30px;height:30px;flex:none;border-radius:9px;background:#9fffd01b;color:var(--mint);display:grid;place-items:center;font-weight:900}
 #toast{position:absolute;z-index:6;bottom:calc(132px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:#182441e8;border:1px solid #ffffff30;border-radius:30px;padding:8px 14px;font-size:12px;opacity:0;transition:.2s;pointer-events:none;white-space:nowrap;max-width:88vw;overflow:hidden;text-overflow:ellipsis}
 #result{display:none;z-index:10;justify-content:center}
-.result-layout{display:grid;grid-template-columns:minmax(130px,220px) minmax(280px,480px);width:min(720px,100%);gap:0;align-items:stretch;text-align:left}
-.avatar-card{border:2px solid var(--accent);border-right:0;border-radius:20px 0 0 20px;background:linear-gradient(160deg,#fff,#f0f5ff);color:#25314a;padding:18px 12px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-align:center}
-.avatar{font-size:clamp(85px,16vw,145px);filter:drop-shadow(0 8px 12px color-mix(in srgb,var(--accent) 45%,transparent));margin:auto 0;display:flex;align-items:center;justify-content:center}
-.avatar img{width:100%;height:auto;max-height:min(42vh,200px);object-fit:contain;display:block}
-.avatar-card small{font-size:10px;letter-spacing:.16em;color:var(--accent);font-weight:900}
-.result-panel{border:2px solid var(--accent);border-radius:0 20px 20px 0;background:#fff;color:#273149;padding:20px;max-height:calc(100dvh - 100px);overflow:auto}
-.result-panel .eyebrow{font-size:10px;letter-spacing:.18em;color:var(--accent);font-weight:900}
-.result-panel h2{font-size:clamp(27px,5vw,40px);line-height:1.1;color:var(--accent);margin:7px 0}
-.result-panel p{font-size:13px;line-height:1.8;color:#536078}
-.scorebox{border:1px solid color-mix(in srgb,var(--accent) 35%,white);background:color-mix(in srgb,var(--accent) 8%,white);padding:13px;border-radius:13px;margin:12px 0}
-.scorebig{font-size:34px;color:var(--accent);font-weight:1000}.meter{height:7px;background:#e9eaf0;border-radius:9px;overflow:hidden;margin-top:8px}.meter i{display:block;height:100%;background:var(--accent);width:0;transition:width .5s}
-.mini-stats{display:flex;gap:7px;margin:12px 0}.mini{flex:1;padding:9px 5px;border-radius:10px;background:#f3f5f9;text-align:center}.mini b{display:block;font-size:21px;color:var(--accent)}.mini span{font-size:10px;color:#738098}
-.result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.result-actions button{flex:1;min-width:120px}
-@media(max-width:620px){.result-layout{display:flex;flex-direction:column;max-width:460px}.avatar-card{border:2px solid var(--accent);border-radius:17px 17px 0 0;flex-direction:row;min-height:118px;padding:8px 15px}.avatar{font-size:80px;margin:0}.result-panel{border-radius:0 0 17px 17px;padding:16px;max-height:none}.screen#result{justify-content:flex-start;padding-top:calc(env(safe-area-inset-top) + 50px)}}
+/* 结算：横向框图（左人物 / 右数据），整体一个边框 */
+.result-card{display:grid;grid-template-columns:minmax(230px,42%) 1fr;width:min(960px,100%);align-items:stretch;text-align:left;border:2px solid var(--accent);border-radius:22px;overflow:hidden;background:#fff;color:#273149;box-shadow:0 26px 80px #0008;max-height:calc(100dvh - 96px)}
+.rc-figure{background:linear-gradient(160deg,#fff,#eef3ff);border-right:1px solid #e4eaf6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px 14px}
+.avatar{width:100%;display:flex;align-items:center;justify-content:center;font-size:clamp(72px,11vw,132px);filter:drop-shadow(0 10px 16px color-mix(in srgb,var(--accent) 40%,transparent));margin:auto 0}
+.avatar img{width:100%;height:auto;max-height:min(46vh,320px);object-fit:contain;display:block;filter:drop-shadow(0 10px 18px color-mix(in srgb,var(--accent) 30%,transparent))}
+.rc-figure-tag{text-align:center;line-height:1.5}
+.rc-figure-tag small{display:block;font-size:9px;letter-spacing:.16em;color:var(--accent);font-weight:900}
+.rc-figure-tag b{font-size:12px;letter-spacing:.1em;color:#25314a}
+.rc-body{background:#fff;padding:18px 20px;overflow:auto}
+.rc-body .eyebrow{font-size:10px;letter-spacing:.18em;color:var(--accent);font-weight:900}
+.rc-body h2{font-size:clamp(26px,4.6vw,38px);line-height:1.1;color:var(--accent);margin:6px 0}
+.rc-body p{font-size:13px;line-height:1.8;color:#536078}
+.scorebox{border:1px solid color-mix(in srgb,var(--accent) 35%,white);background:color-mix(in srgb,var(--accent) 8%,white);padding:12px;border-radius:13px;margin:11px 0}
+.scorebig{font-size:33px;color:var(--accent);font-weight:1000}.meter{height:7px;background:#e9eaf0;border-radius:9px;overflow:hidden;margin-top:8px}.meter i{display:block;height:100%;background:var(--accent);width:0;transition:width .5s}
+.mini-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:11px 0}.mini{padding:8px 4px;border-radius:10px;background:#f3f5f9;text-align:center}.mini b{display:block;font-size:19px;color:var(--accent)}.mini span{font-size:10px;color:#738098}
+.result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.result-actions button{flex:1;min-width:112px}
+@media(max-width:680px){
+ .result-card{grid-template-columns:minmax(118px,40%) 1fr;border-radius:16px;max-height:calc(100dvh - 72px)}
+ .rc-figure{padding:10px 8px;gap:6px}
+ .rc-body{padding:12px 13px}
+ .rc-body h2{font-size:clamp(19px,5vw,24px)}
+ .rc-body p{font-size:12px;line-height:1.65}
+ .scorebig{font-size:26px}
+ .mini b{font-size:15px}.mini span{font-size:9px}
+ .result-actions button{min-width:96px;font-size:12px}
+ .screen#result{justify-content:flex-start;padding-top:calc(env(safe-area-inset-top) + 42px)}
+}
 @media(max-height:650px){.hero{height:130px}.sprite{font-size:65px}.screen{padding-top:52px}.panel{padding:16px}.choice{padding:9px}}
 #narrative{display:none;position:absolute;z-index:4;left:50%;top:calc(env(safe-area-inset-top) + 112px);transform:translateX(-50%);width:min(760px,calc(100% - 34px));padding:13px 18px 14px;border:1px solid #d7fff04a;border-radius:16px;background:linear-gradient(100deg,#101a2de8,#1b2946e8);box-shadow:0 12px 34px #0005;backdrop-filter:blur(8px);pointer-events:none;text-align:left}
 #narrative .nhead{font-size:11px;letter-spacing:.16em;color:#9fffd0;font-weight:900;margin-bottom:5px}
@@ -97,9 +110,12 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 </section>
 
 <section class="screen overlay" id="result" style="display:none">
- <div class="result-layout">
-  <div class="avatar-card" id="avatarCard"><small>YOUR INSPIRATION TYPE</small><div class="avatar" id="avatar">🧚</div><small id="typeEnglish">CREATOR</small></div>
-  <div class="result-panel" id="resultPanel"><div class="eyebrow">INSPIRATION ARCHIVE / 001</div><h2 id="typeName">凯瑞特</h2><p id="typeQuote"></p><div class="scorebox"><div class="eyebrow">灵感共鸣指数</div><div class="scorebig" id="typeScore">92</div><p id="typeDesc"></p><div class="meter"><i id="meterFill"></i></div></div><div class="mini-stats"><div class="mini"><b id="finalScore">0</b><span>跑酷积分</span></div><div class="mini"><b id="finalShard">0</b><span>灵感碎片</span></div><div class="mini"><b id="finalSpecial">0</b><span>特殊灵感</span></div><div class="mini"><b id="finalDist">0</b><span>探索距离(m)</span></div></div><p id="typeAdvice"></p><div class="result-actions"><button class="primary" id="playAgain">再次出发</button><button class="secondary" id="share">复制人格卡</button></div></div>
+ <div class="result-card">
+  <div class="rc-figure" id="avatarCard">
+   <div class="avatar" id="avatar">🧚</div>
+   <div class="rc-figure-tag"><small>YOUR INSPIRATION TYPE</small><b id="typeEnglish">CREATOR</b></div>
+  </div>
+  <div class="rc-body" id="resultPanel"><div class="eyebrow">INSPIRATION ARCHIVE / 001</div><h2 id="typeName">凯瑞特</h2><p id="typeQuote"></p><div class="scorebox"><div class="eyebrow">灵感共鸣指数</div><div class="scorebig" id="typeScore">92</div><p id="typeDesc"></p><div class="meter"><i id="meterFill"></i></div></div><div class="mini-stats"><div class="mini"><b id="finalScore">0</b><span>跑酷积分</span></div><div class="mini"><b id="finalShard">0</b><span>灵感碎片</span></div><div class="mini"><b id="finalSpecial">0</b><span>特殊灵感</span></div><div class="mini"><b id="finalDist">0</b><span>探索距离(m)</span></div></div><p id="typeAdvice"></p><div class="result-actions"><button class="primary" id="playAgain">再次出发</button><button class="secondary" id="share">复制人格卡</button></div></div>
  </div>
 </section>
 
@@ -455,7 +471,7 @@ function loadArt(){
   ART.near[g]=(M.near[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src) }));
  for(const g of Object.keys(M.obstacle||{}))
   ART.obst[g]=(M.obstacle[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src), h:(s&&s.h)||52 }));
- for(const k of Object.keys(M.avatar||{})) ART.avatar[k]=artLoad(M.avatar[k]);
+ for(const k of Object.keys(M.avatar||{})) ART.avatar[k]=M.avatar[k];   // 只存路径，结算时按需加载
 }
 // 当前场景对应哪一组美术（1~4）
 function artGroup(){
@@ -1380,10 +1396,15 @@ function finish(){
  $("avatarCard").style.setProperty("--accent",t.color);
  $("resultPanel").style.setProperty("--accent",t.color);
  {
-  const av=ART.avatar[String(t.en).toLowerCase()];
-  const el=$("avatar");
-  if(av&&av.ok){ el.innerHTML='<img src="'+av.src+'" alt="'+t.name+'">'; }
-  else { el.textContent=t.emoji; }
+  // 人格立绘按需加载（大图也只在结算时拉这一张），缺图回退到 emoji
+  const el=$("avatar"), path=ART.avatar[String(t.en).toLowerCase()];
+  el.textContent=t.emoji;
+  if(path){
+   const probe=new Image();
+   probe.onload=()=>{ el.innerHTML='<img src="'+path+'" alt="'+t.name+'">'; };
+   probe.onerror=()=>{ el.textContent=t.emoji; };
+   probe.src=path;
+  }
  }
  $("typeEnglish").textContent=t.en;
  $("typeName").textContent=t.name; $("typeQuote").textContent="「"+t.quote+"」";
@@ -1710,10 +1731,21 @@ function copyText(text,pick){
  if(pick) pick();
  return Promise.resolve(false);
 }
+// 人格卡里附带的游戏网址：优先用当前地址，本地/未知环境回退到线上地址
+const FALLBACK_URL="https://liqin071.github.io/Parkour_imagination/";
+function gameUrl(){
+ try{
+  const p=location.protocol;
+  if((p==="http:"||p==="https:")&&location.href.indexOf("file:")!==0){
+   return location.origin+location.pathname.replace(/index\.html?$/i,"");
+  }
+ }catch(e){}
+ return FALLBACK_URL;
+}
 $("share").onclick=()=>{
  const btn=$("share");
  const t=archetypes.find(a=>a.en===$("typeEnglish").textContent)||archetypes[0];
- const s=`创想大师人格档案：${t.name} / ${t.en}\n${t.quote}\n灵感共鸣指数：${$("typeScore").textContent}\n跑酷积分：${score}｜灵感碎片：${shards}｜特殊灵感：${mics+brushes}｜探索距离：${Math.round(dist/10)}m\n#创想大师 #灵感世界修复计划`;
+ const s=`创想大师人格档案：${t.name} / ${t.en}\n${t.quote}\n灵感共鸣指数：${$("typeScore").textContent}\n跑酷积分：${score}｜灵感碎片：${shards}｜特殊灵感：${mics+brushes}｜探索距离：${Math.round(dist/10)}m\n来玩：${gameUrl()}\n#创想大师 #灵感世界修复计划`;
  const old=btn.textContent;
  btn.textContent="复制中…";
  copyText(s,()=>prompt("长按选择后复制人格卡文案",s)).then(ok=>{
