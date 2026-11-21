@@ -126,18 +126,10 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 <div id="flash"></div>
 </div>
 <script>
-/* 动态加载美术清单并带版本号，避免浏览器/CDN 缓存到旧的清单或旧图 */
-(function(){
- try{
-  var s=document.createElement("script");
-  s.async=true;
-  s.src="assets/manifest.js?t="+Date.now();
-  s.onload=s.onerror=function(){ window.__ART_MANIFEST_TRIED=true; };
-  var h=document.head||document.documentElement||document.body;
-  if(h&&h.appendChild) h.appendChild(s);
- }catch(e){}
-})();
+/* 美术清单用最普通的静态 <script> 加载（file:// 也能用）；
+   如果被缓存成旧版，主脚本里的 bootArt() 会再补一次带时间戳的加载（仅 http(s)） */
 </script>
+<script src="assets/manifest.js"></script>
 <script>
 (()=>{
 "use strict";
@@ -462,13 +454,26 @@ function vignSpr(){
    ============================================================ */
 const ART={ready:false,ver:"",bg:{},near:{},obst:{},avatar:{}};
 const ART_BASE="assets/";
+// 七种人格立绘的路径直接写死：**不依赖 manifest**，清单坏了/没加载也能显示
+const AVATAR_DEFAULT={
+ creator:"avatar/creator.png", collector:"avatar/collector.png", historian:"avatar/historian.png",
+ empath:"avatar/empath.png", painter:"avatar/painter.png", muse:"avatar/muse.png", pioneer:"avatar/pioneer.png"
+};
 let ART_MAN=null;
+// 版本查询串只在 http(s) 下加：本地 file:// 会把 ?v= 当成文件名的一部分
+function artVerQuery(){
+ try{
+  const p=location.protocol;
+  if((p==="http:"||p==="https:")&&ART.ver) return "?v="+ART.ver;
+ }catch(e){}
+ return "";
+}
+function artURL(path){ return ART_BASE+path+artVerQuery(); }
 function artLoad(path){
  const im=new Image();
  im.onload=()=>{ im.ok=true; };
  im.onerror=()=>{ im.ok=false; };
- // 带版本号，避免缓存到旧图（换图后刷新即可看到新的）
- im.src=ART_BASE+path+(ART.ver?("?v="+ART.ver):"");
+ im.src=artURL(path);
  return im;
 }
 // —— 美术开关：暂时只启用人格立绘；背景/近景/障碍仍用内置程序绘制 ——
@@ -477,8 +482,10 @@ const ART_USE=Object.assign({ bg:false, near:false, obstacle:false, avatar:true 
  (typeof window!=="undefined"&&window.ART_USE)||{});
 function loadArt(){
  const M=(typeof window!=="undefined")?window.ART_MANIFEST:null;
+ ART_MAN=M; ART.ver=M?String(M.v||""):""; ART.ready=!!M;
+ // 人格立绘：默认路径 + 清单覆盖（清单没有也照样能显示）
+ if(ART_USE.avatar) ART.avatar=Object.assign({},AVATAR_DEFAULT,(M&&M.avatar)||{});
  if(!M) return false;
- ART_MAN=M; ART.ver=String(M.v||""); ART.ready=true;
  if(ART_USE.bg){
   for(const g of Object.keys(M.bg||{})){
    const m=M.bg[g]||{};
@@ -494,20 +501,40 @@ function loadArt(){
   for(const g of Object.keys(M.obstacle||{}))
    ART.obst[g]=(M.obstacle[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src), h:(s&&s.h)||52 }));
  }
- if(ART_USE.avatar){
-  for(const k of Object.keys(M.avatar||{})) ART.avatar[k]=M.avatar[k];   // 只存路径，结算时按需加载
- }
  return true;
 }
-// 清单是异步插入的：等它到位再加载美术（最多等 4 秒）
+// 美术清单：静态 <script> 先加载一次；如果没有/版本旧，再按需补一次（仅 http(s) 下带时间戳防缓存）
 function bootArt(){
+ loadArt();                                   // 先挂上默认头像路径（不依赖清单）
+ const retryLoad=()=>{
+  try{
+   if(!ART_MAN&&window.ART_MANIFEST) return loadArt();
+   const p=location.protocol;
+   if(p==="http:"||p==="https:"){
+    const s=document.createElement("script");
+    s.async=true;
+    s.src="assets/manifest.js?t="+Date.now();
+    s.onload=()=>loadArt();
+    const h=document.head||document.documentElement||document.body;
+    if(h&&h.appendChild) h.appendChild(s);
+   }
+  }catch(e){}
+ };
  let n=0;
  const tick=()=>{
-  if(window.ART_MANIFEST&&loadArt()) return;
-  if(++n>80) return;
+  if(window.ART_MANIFEST){ if(!ART.ready||ART.ver!==String(window.ART_MANIFEST.v||"")) loadArt(); return; }
+  if(++n>40){ retryLoad(); return; }
   setTimeout(tick,50);
  };
  tick();
+ // 调试用：控制台里 __ART_STATUS() 可以看到美术加载情况
+ try{
+  window.__ART_STATUS=()=>({
+   manifest:!!ART_MAN, ver:ART.ver, use:JSON.parse(JSON.stringify(ART_USE)),
+   avatars:Object.keys(ART.avatar), bg:Object.keys(ART.bg).length,
+   near:Object.keys(ART.near).length, obst:Object.keys(ART.obst).length
+  });
+ }catch(e){}
 }
 // 当前场景对应哪一组美术（1~4）
 function artGroup(){
@@ -1590,15 +1617,17 @@ function finish(){
  $("avatarCard").style.setProperty("--accent",t.color);
  $("resultPanel").style.setProperty("--accent",t.color);
  {
-  // 人格立绘按需加载（大图也只在结算时拉这一张），缺图回退到 emoji
-  const el=$("avatar"), rel=ART.avatar[String(t.en).toLowerCase()];
-  const src=rel?(ART_BASE+rel+(ART.ver?("?v="+ART.ver):"")):null;   // ★ 必须补上 assets/ 前缀
+  // 人格立绘：路径来自 AVATAR_DEFAULT（不依赖清单），加载失败才回退 emoji
+  const el=$("avatar"), rel=ART.avatar[String(t.en).toLowerCase()]||AVATAR_DEFAULT[String(t.en).toLowerCase()];
+  const src=rel?artURL(rel):null;
   el.textContent=t.emoji;
   if(src){
-   const probe=new Image();
-   probe.onload=()=>{ el.innerHTML='<img src="'+src+'" alt="'+t.name+'">'; };
-   probe.onerror=()=>{ el.textContent=t.emoji; };
-   probe.src=src;
+   try{
+    const probe=new Image();
+    probe.onload=()=>{ el.innerHTML='<img src="'+src+'" alt="'+t.name+'">'; };
+    probe.onerror=()=>{ el.textContent=t.emoji; };
+    probe.src=src;
+   }catch(e){ el.textContent=t.emoji; }      // 取图失败也绝不影响结算流程
   }
  }
  $("typeEnglish").textContent=t.en;
