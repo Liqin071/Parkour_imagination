@@ -1623,7 +1623,7 @@ function finish(){
   const rel=ART.avatar[key]||AVATAR_DEFAULT[key]||("avatar/"+key+".png");
   const base=rel.replace(/\.(png|webp|jpe?g)$/i,"");
   const cands=[base+".webp",base+".png",base+".jpg"];
-  const dbg=/debug/i.test(location.search||"");
+  const dbg=(typeof location!=="undefined")&&/debug/i.test(location.search||"");
   el.textContent=t.emoji;
   let ci=0;
   const tryNext=()=>{
@@ -2007,7 +2007,7 @@ requestAnimationFrame(()=>{ startLoop(); });   // 首屏待机动画（轻量）
 
 // 开发用：地址加 ?debug=result 直接跳到结算页（方便检查立绘与排版）
 try{
- if(/debug=result/i.test(location.search||"")){
+ if((typeof location!=="undefined")&&/debug=result/i.test(location.search||"")){
   setTimeout(()=>{
    answers=[0,1,2,0,2]; shards=40; mics=1; brushes=1; dist=8000; score=1500;
    finish();
