@@ -1959,13 +1959,16 @@ function copyText(text,pick){
  if(pick) pick();
  return Promise.resolve(false);
 }
-// 人格卡里附带的游戏网址：优先用当前地址，本地/未知环境回退到线上地址
+// 人格卡里附带的游戏网址：用当前地址，规范化成「目录 + 结尾斜杠」（去掉 index.html/参数/锚点）
+// 这样分享出去不管部署在域名根还是子目录都能打开；本地 file:// 则回退到线上地址
 const FALLBACK_URL="https://liqin071.github.io/Parkour_imagination/";
 function gameUrl(){
  try{
   const p=location.protocol;
-  if((p==="http:"||p==="https:")&&location.href.indexOf("file:")!==0){
-   return location.origin+location.pathname.replace(/index\.html?$/i,"");
+  if(p==="http:"||p==="https:"){
+   let path=location.pathname.replace(/[^\/]*\.html?$/i,"");   // 去掉 index.html
+   if(path.charAt(path.length-1)!=="/") path+="/";
+   return location.origin+path;                                 // 自然丢掉 ?query 与 #hash
   }
  }catch(e){}
  return FALLBACK_URL;
