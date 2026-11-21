@@ -39,7 +39,8 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 #result{display:none;z-index:10;justify-content:center}
 .result-layout{display:grid;grid-template-columns:minmax(130px,220px) minmax(280px,480px);width:min(720px,100%);gap:0;align-items:stretch;text-align:left}
 .avatar-card{border:2px solid var(--accent);border-right:0;border-radius:20px 0 0 20px;background:linear-gradient(160deg,#fff,#f0f5ff);color:#25314a;padding:18px 12px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-align:center}
-.avatar{font-size:clamp(85px,16vw,145px);filter:drop-shadow(0 8px 12px color-mix(in srgb,var(--accent) 45%,transparent));margin:auto 0}
+.avatar{font-size:clamp(85px,16vw,145px);filter:drop-shadow(0 8px 12px color-mix(in srgb,var(--accent) 45%,transparent));margin:auto 0;display:flex;align-items:center;justify-content:center}
+.avatar img{width:100%;height:auto;max-height:min(42vh,200px);object-fit:contain;display:block}
 .avatar-card small{font-size:10px;letter-spacing:.16em;color:var(--accent);font-weight:900}
 .result-panel{border:2px solid var(--accent);border-radius:0 20px 20px 0;background:#fff;color:#273149;padding:20px;max-height:calc(100dvh - 100px);overflow:auto}
 .result-panel .eyebrow{font-size:10px;letter-spacing:.18em;color:var(--accent);font-weight:900}
@@ -109,6 +110,7 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 <div id="windup"><div class="wring"></div><div class="wtext" id="wtext">灵感共鸣即将发生</div><div class="wsub" id="wsub">准备好你的选择</div></div>
 <div id="flash"></div>
 </div>
+<script src="assets/manifest.js"></script>
 <script>
 (()=>{
 "use strict";
@@ -429,6 +431,79 @@ function vignSpr(){
 }
 
 /* ============================================================
+   5b. 可选美术资源（assets/manifest.js 声明；缺图自动回退到程序绘制）
+   ============================================================ */
+const ART={ready:false,bg:{},near:{},obst:{},avatar:{}};
+const ART_BASE="assets/";
+function artLoad(path){
+ const im=new Image();
+ im.onload=()=>{ im.ok=true; };
+ im.onerror=()=>{ im.ok=false; };
+ im.src=ART_BASE+path;
+ return im;
+}
+function loadArt(){
+ const M=(typeof window!=="undefined")?window.ART_MANIFEST:null;
+ if(!M) return;
+ ART.ready=true;
+ for(const g of Object.keys(M.bg||{})){
+  const m=M.bg[g]||{};
+  ART.bg[g]={ base:m.base?artLoad(m.base):null,
+   layers:(m.layers||[]).map(l=>({ im:artLoad(l.src), par:(l.par==null?.2:l.par), scale:l.scale||1 })) };
+ }
+ for(const g of Object.keys(M.near||{}))
+  ART.near[g]=(M.near[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src) }));
+ for(const g of Object.keys(M.obstacle||{}))
+  ART.obst[g]=(M.obstacle[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src), h:(s&&s.h)||52 }));
+ for(const k of Object.keys(M.avatar||{})) ART.avatar[k]=artLoad(M.avatar[k]);
+}
+// 当前场景对应哪一组美术（1~4）
+function artGroup(){
+ if(chapter==="run") return 1+(Math.floor(dist/(RUN_LENGTH/4))%4);
+ return Math.min(4, storyStep<2?1:storyStep);
+}
+function artBGSet(){
+ if(!ART.ready) return null;
+ const g=ART.bg[String(artGroup())];
+ return (g&&g.base&&g.base.ok)?g:null;
+}
+// 画美术背景：底图固定铺满 + 3 层视差横向平铺。返回 true 表示已接管背景
+function drawArtBG(gy,tr){
+ const g=artBGSet(); if(!g) return false;
+ const b=g.base;
+ ctx.drawImage(b,-48,-48,W+96,H+96);
+ for(const L of g.layers){
+  const im=L.im; if(!im||!im.ok||!im.height) continue;
+  const ih=Math.min(H*0.9,gy*0.98), iw=im.width*(ih/im.height);
+  if(iw<8) continue;
+  const off=wrap(tr*(L.par||.2), iw);
+  for(let x=-off;x<W;x+=iw) ctx.drawImage(im,x,gy-ih,iw,ih);
+ }
+ return true;
+}
+// 画美术近景：沿路按稳定间隔摆放（不会闪），底边踩地
+function drawArtNear(gy,tr){
+ if(!ART.ready) return false;
+ const list=ART.near[String(artGroup())]; if(!list||!list.length) return false;
+ const ok=list.filter(s=>s.im&&s.im.ok&&s.im.height);
+ if(!ok.length) return false;
+ const SP=Math.max(300,W*.42);
+ const world=tr*.86;
+ const first=Math.floor((world-SP)/SP);
+ for(let i=first;i<=first+Math.ceil(W/SP)+2;i++){
+  const pick=ok[((i%ok.length)+ok.length)%ok.length];
+  const im=pick.im;
+  const h=Math.min(H*.40,im.height*.55), w=im.width*(h/im.height);
+  const x=i*SP-wrap(world,SP)+SP*.5;
+  if(x<-w||x>W+w) continue;
+  ctx.globalAlpha=.95;
+  ctx.drawImage(im,x-w/2,gy-h+4,w,h);
+ }
+ ctx.globalAlpha=1;
+ return true;
+}
+
+/* ============================================================
    6. 渲染
    ============================================================ */
 function draw(){
@@ -446,11 +521,14 @@ function draw(){
  if(sceneMix<1&&sceneA!==sceneB){
   ctx.globalAlpha=sceneMix; ctx.fillStyle=skyGrad(sceneB); ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2); ctx.globalAlpha=1;
  }
- ctx.fillStyle=glowGrad(sceneB); ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2);
-
- drawStars(pal);
- drawRidges(pal,gy,dist);
- drawSet(pal,gy,dist);
+ // 有美术背景时由它接管天空/远景/布景，否则用内置程序绘制
+ if(!drawArtBG(gy,dist)){
+  ctx.fillStyle=glowGrad(sceneB); ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2);
+  drawStars(pal);
+  drawRidges(pal,gy,dist);
+  drawSet(pal,gy,dist);
+ }
+ drawArtNear(gy,dist);                      // 美术近景（没有图就什么也不画）
  drawGround(pal,gy,dist);
 
  drawClutter(false);                        // 背景层干扰物
@@ -553,7 +631,8 @@ function drawEnt(o,gy,pal){
   if(o.type==="shard") blit(s,o.x,y,Math.PI/4+clock*.8,1);
   else blit(s,o.x,y,0,1+Math.sin(clock*3+o.ph)*.05);
  }else{
-  blitBottom(obstSpr(o.type),o.x+o.w/2,gy);
+  if(o.art&&o.art.im&&o.art.im.ok&&o.art.im.height) ctx.drawImage(o.art.im,o.x,gy-o.h,o.w,o.h);
+  else blitBottom(obstSpr(o.type),o.x+o.w/2,gy);
  }
 }
 // 结界：贯穿地面以上的半透明剖面光墙（跟碎片同速移动，碰到触发选择，自身不消失）
@@ -967,8 +1046,20 @@ function placeChunk(baseX,v){
  for(const p of parts2){
   if(p.kind==="obstacle"){
    const d=OBST[p.type];
-   ents.push({kind:"obstacle",type:p.type,x:baseX+p.dx,w:d.w,h:d.h,hit:false});
-   maxOff=Math.max(maxOff,p.dx+d.w); obs++;
+   let w=d.w, h=d.h, art=null;
+   // 该背景组配了美术障碍就用美术：高度按清单（40~64 夹取），宽度按图片比例
+   if(ART.ready){
+    const set=ART.obst[String(artGroup())];
+    if(set&&set.length){
+     art=set[Math.floor(Math.random()*set.length)];
+     h=clamp(art.h||52,40,64);
+     const im=art.im;
+     const ratio=(im&&im.ok&&im.height)?(im.width/im.height):1;
+     w=clamp(Math.round(h*ratio),28,80);
+    }
+   }
+   ents.push({kind:"obstacle",type:p.type,x:baseX+p.dx,w:w,h:h,hit:false,art:art});
+   maxOff=Math.max(maxOff,p.dx+w); obs++;
   }else{
    ents.push({kind:"item",type:p.type,x:baseX+p.dx,alt:p.alt,ph:Math.random()*TAU});
    maxOff=Math.max(maxOff,p.dx+34);
@@ -1288,7 +1379,13 @@ function finish(){
  const rate=Math.round(counts[idx]/sum*100);
  $("avatarCard").style.setProperty("--accent",t.color);
  $("resultPanel").style.setProperty("--accent",t.color);
- $("avatar").textContent=t.emoji; $("typeEnglish").textContent=t.en;
+ {
+  const av=ART.avatar[String(t.en).toLowerCase()];
+  const el=$("avatar");
+  if(av&&av.ok){ el.innerHTML='<img src="'+av.src+'" alt="'+t.name+'">'; }
+  else { el.textContent=t.emoji; }
+ }
+ $("typeEnglish").textContent=t.en;
  $("typeName").textContent=t.name; $("typeQuote").textContent="「"+t.quote+"」";
  $("typeDesc").textContent=t.desc; $("typeAdvice").textContent="创作建议："+t.advice;
  $("typeScore").textContent=rate; $("meterFill").style.width=rate+"%";
@@ -1626,6 +1723,7 @@ $("share").onclick=()=>{
 };
 
 window.addEventListener("resize",resize);
+loadArt();
 resize();
 requestAnimationFrame(()=>{ startLoop(); });   // 首屏待机动画（轻量）
 })();
