@@ -513,6 +513,7 @@ function avatarCands(key){
  return [base+".webp",base+".png",base+".jpg"];
 }
 ART.avatarOK={};                    // key → 已经确认能加载的地址（Loading 屏预取成功后写入）
+ART.warm=[];                        // 预取中的 Image 引用，避免被 GC 掉（后台下载要继续）
 function artLoad(path){
  const im=new Image();
  im.onload=()=>{ im.ok=true; };
@@ -598,6 +599,7 @@ function preloadAvatars(){
    const rel=cands[ci++];
    try{
     const im=new Image();
+    ART.warm.push(im);                          // 留个引用，防止被回收导致后台下载中断
     im.onload=()=>{ ART.avatarOK[k]=rel; step(); };
     im.onerror=next;
     im.src=artURL(rel);
