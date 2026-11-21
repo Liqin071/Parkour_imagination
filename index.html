@@ -92,7 +92,6 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 <section class="screen" id="intro">
  <div class="kicker">A JOURNEY TO REBUILD INSPIRATION</div><h1>创想<span>大师</span></h1>
  <p class="subtitle">灵感核心失控，世界里的色彩、声音与奇妙想法散落各处。<br>跟随小精灵出发，把灵感重新带回世界。</p>
- <div class="hero"><div class="orbit"></div><div class="orbit b"></div><span class="sprite">🧚</span><span class="spark s1">✦</span><span class="spark s2">✧</span></div>
  <button class="primary" id="begin">开启灵感旅程</button>
  <div class="hint">电脑：空格 / ↑ 跳跃（<b>轻点小跳、按住大跳</b>，空中再按一次二连跳）· 手机：点右下按钮<br>第一章就是跑酷探索：边跑边看剧情变化，跳跃穿越灵感世界</div>
 </section>
@@ -472,20 +471,32 @@ function artLoad(path){
  im.src=ART_BASE+path+(ART.ver?("?v="+ART.ver):"");
  return im;
 }
+// —— 美术开关：暂时只启用人格立绘；背景/近景/障碍仍用内置程序绘制 ——
+// 以后要重新启用，把对应的 false 改成 true 即可（也可以从 console 里设置 window.ART_USE 后刷新）
+const ART_USE=Object.assign({ bg:false, near:false, obstacle:false, avatar:true },
+ (typeof window!=="undefined"&&window.ART_USE)||{});
 function loadArt(){
  const M=(typeof window!=="undefined")?window.ART_MANIFEST:null;
  if(!M) return false;
  ART_MAN=M; ART.ver=String(M.v||""); ART.ready=true;
- for(const g of Object.keys(M.bg||{})){
-  const m=M.bg[g]||{};
-  ART.bg[g]={ base:m.base?artLoad(m.base):null, ground:m.ground,
-   layers:(m.layers||[]).map(l=>({ im:artLoad(l.src), par:(l.par==null?.2:l.par), scale:l.scale||1 })) };
+ if(ART_USE.bg){
+  for(const g of Object.keys(M.bg||{})){
+   const m=M.bg[g]||{};
+   ART.bg[g]={ base:m.base?artLoad(m.base):null, ground:m.ground,
+    layers:(m.layers||[]).map(l=>({ im:artLoad(l.src), par:(l.par==null?.2:l.par), scale:l.scale||1 })) };
+  }
  }
- for(const g of Object.keys(M.near||{}))
-  ART.near[g]=(M.near[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src) }));
- for(const g of Object.keys(M.obstacle||{}))
-  ART.obst[g]=(M.obstacle[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src), h:(s&&s.h)||52 }));
- for(const k of Object.keys(M.avatar||{})) ART.avatar[k]=M.avatar[k];   // 只存路径，结算时按需加载
+ if(ART_USE.near){
+  for(const g of Object.keys(M.near||{}))
+   ART.near[g]=(M.near[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src) }));
+ }
+ if(ART_USE.obstacle){
+  for(const g of Object.keys(M.obstacle||{}))
+   ART.obst[g]=(M.obstacle[g]||[]).map(s=>({ im:artLoad(typeof s==="string"?s:s.src), h:(s&&s.h)||52 }));
+ }
+ if(ART_USE.avatar){
+  for(const k of Object.keys(M.avatar||{})) ART.avatar[k]=M.avatar[k];   // 只存路径，结算时按需加载
+ }
  return true;
 }
 // 清单是异步插入的：等它到位再加载美术（最多等 4 秒）
@@ -545,6 +556,7 @@ function blitTrim(im,x,gy,h,allowSink){
 }
 // 画美术背景：单张底图固定不动，并把画面里的“地面线”对齐到游戏地面线
 function drawArtBG(gy,tr){
+ if(!ART_USE.bg) return false;                 // 美术背景开关（暂时关闭，用程序绘制）
  const g=artBGSet(); if(!g) return false;
  const b=g.base, iw=b.width, ih=b.height;
  if(!iw||!ih) return false;
@@ -571,6 +583,7 @@ function drawArtBG(gy,tr){
 }
 // 画美术近景：沿路按稳定间隔摆放（不会闪），按不透明内容贴地
 function drawArtNear(gy,tr){
+ if(!ART_USE.near) return false;               // 美术近景开关（暂时关闭）
  if(!ART.ready) return false;
  const list=ART.near[String(artGroup())]; if(!list||!list.length) return false;
  const ok=list.filter(s=>s.im&&s.im.ok&&s.im.height);
@@ -1167,7 +1180,7 @@ function placeChunk(baseX,v){
    const d=OBST[p.type];
    let w=d.w, h=d.h, art=null;
    // 该背景组配了美术障碍就用美术：按“不透明内容”的宽高比定尺寸，高度夹在 40~64
-   if(ART.ready){
+   if(ART_USE.obstacle&&ART.ready){
     const set=ART.obst[String(artGroup())];
     if(set&&set.length){
      art=set[Math.floor(Math.random()*set.length)];
@@ -1578,13 +1591,14 @@ function finish(){
  $("resultPanel").style.setProperty("--accent",t.color);
  {
   // 人格立绘按需加载（大图也只在结算时拉这一张），缺图回退到 emoji
-  const el=$("avatar"), path=ART.avatar[String(t.en).toLowerCase()];
+  const el=$("avatar"), rel=ART.avatar[String(t.en).toLowerCase()];
+  const src=rel?(ART_BASE+rel+(ART.ver?("?v="+ART.ver):"")):null;   // ★ 必须补上 assets/ 前缀
   el.textContent=t.emoji;
-  if(path){
+  if(src){
    const probe=new Image();
-   probe.onload=()=>{ el.innerHTML='<img src="'+path+'" alt="'+t.name+'">'; };
+   probe.onload=()=>{ el.innerHTML='<img src="'+src+'" alt="'+t.name+'">'; };
    probe.onerror=()=>{ el.textContent=t.emoji; };
-   probe.src=path;
+   probe.src=src;
   }
  }
  $("typeEnglish").textContent=t.en;
