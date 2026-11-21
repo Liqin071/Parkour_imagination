@@ -1620,14 +1620,26 @@ function finish(){
   // 人格立绘：路径来自 AVATAR_DEFAULT（不依赖清单），加载失败才回退 emoji
   const el=$("avatar"), rel=ART.avatar[String(t.en).toLowerCase()]||AVATAR_DEFAULT[String(t.en).toLowerCase()];
   const src=rel?artURL(rel):null;
+  const dbg=/debug/i.test(location.search||"");
   el.textContent=t.emoji;
-  if(src){
+  if(!src){ if(dbg) document.title="AVATAR-NOPATH:"+t.en; }
+  else{
    try{
     const probe=new Image();
-    probe.onload=()=>{ el.innerHTML='<img src="'+src+'" alt="'+t.name+'">'; };
-    probe.onerror=()=>{ el.textContent=t.emoji; };
+    probe.onload=()=>{
+     el.innerHTML='<img src="'+src+'" alt="'+t.name+'">';
+     if(dbg) document.title="AVATAR-IMG:"+src;
+    };
+    probe.onerror=()=>{
+     el.textContent=t.emoji;
+     if(dbg) document.title="AVATAR-FAIL:"+src;
+    };
     probe.src=src;
-   }catch(e){ el.textContent=t.emoji; }      // 取图失败也绝不影响结算流程
+    if(dbg) document.title="AVATAR-LOADING:"+src;
+   }catch(e){
+    el.textContent=t.emoji;
+    if(dbg) document.title="AVATAR-THROW:"+e.message;
+   }
   }
  }
  $("typeEnglish").textContent=t.en;
@@ -1989,5 +2001,15 @@ window.addEventListener("resize",resize);
 bootArt();
 resize();
 requestAnimationFrame(()=>{ startLoop(); });   // 首屏待机动画（轻量）
+
+// 开发用：地址加 ?debug=result 直接跳到结算页（方便检查立绘与排版）
+try{
+ if(/debug=result/i.test(location.search||"")){
+  setTimeout(()=>{
+   answers=[0,1,2,0,2]; shards=40; mics=1; brushes=1; dist=8000; score=1500;
+   finish();
+  },60);
+ }
+}catch(e){}
 })();
 </script></body></html>
