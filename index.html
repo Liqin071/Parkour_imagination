@@ -235,7 +235,8 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
  <img id="cardImg" alt="人格卡">
  <div class="cptip" id="cardTip">长按图片可保存到相册</div>
  <div class="cpactions">
-  <button class="primary" id="cardDownload">下载图片</button>
+  <button class="primary" id="cardDownload">保存 / 下载</button>
+  <button class="secondary" id="cardCopyImg">复制图片</button>
   <button class="secondary" id="cardClose">关闭</button>
  </div>
 </div></div><div id="storyBanner" style="display:none;position:absolute;z-index:3;top:calc(env(safe-area-inset-top) + 54px);left:18px;right:18px;height:4px;border-radius:9px;background:#ffffff20;overflow:hidden;pointer-events:none"><i id="storyProgress" style="display:block;width:0;height:100%;background:linear-gradient(90deg,#9fffd0,#ffd58b);box-shadow:0 0 12px #9fffd0"></i></div>
@@ -2943,14 +2944,25 @@ function buildShareCard(){
    descRight:dRight,
    statsTop:sy, footerLeftReserved:true}};
 }
-const cardState={url:"",name:""};
+const cardState={url:"",name:"",blob:null};
 function showCardPreview(url,name){
  cardState.url=url; cardState.name=name;
  const img=$("cardImg");
  if(img) img.src=url;
  const tip=$("cardTip");
- const touch=/Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent||"");
- if(tip) tip.textContent=touch?"长按图片 → 保存到相册":"点下方按钮下载，或右键图片另存为";
+ const ua=navigator.userAgent||"";
+ const isWX=/MicroMessenger/i.test(ua);
+ const touch=/Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(ua);
+ if(tip){
+  tip.textContent = isWX
+   ? "在微信里：长按图片 → 保存到相册；若提示失败，改用「复制图片」或直接截图"
+   : (touch ? "长按图片 → 保存到相册" : "点下方按钮下载，或右键图片另存为");
+ }
+ const cp=$("cardCopyImg");
+ if(cp){
+  const canCopy=!!(navigator.clipboard&&window.ClipboardItem);
+  cp.style.display=canCopy?"":"none";
+ }
  const p=$("cardPreview");
  if(p) p.classList.add("show");
 }
@@ -3009,30 +3021,62 @@ function saveCardImage(){
  };
  const deliver=(built)=>{
   if(!built){ if(btn) btn.textContent=old; toast("生成图片失败，可以改用「复制文案」"); return; }
-  const fallbackDataURL=()=>{
-   let data="";
-   try{ data=built.cv.toDataURL("image/png"); }catch(e){ data=""; }
-   if(!data){ if(btn) btn.textContent=old; toast("这台设备的浏览器不支持导出图片"); return; }
-   if(touch){ done(data,built.name,true); }
-   else{ triggerDownload(data,built.name); done(data,built.name,false); }
+  const ua=navigator.userAgent||"";
+  const isWX=/MicroMessenger/i.test(ua);
+  // 导出图片数据：优先 PNG；PNG 太大时退回 JPEG（微信/iOS 对超大 dataURL 不友好）
+  const cardDataURL=()=>{
+   const limit=touch?700000:1400000;                 // 手机端阈值更小，优先稳
+   let d="";
+   try{ d=built.cv.toDataURL("image/png"); }catch(e){ d=""; }
+   if(!d||d.length<20){
+    try{ d=built.cv.toDataURL("image/jpeg",0.94); }catch(e){ d=""; }
+   }
+   if(d.length>limit){
+    try{ const j=built.cv.toDataURL("image/jpeg",0.93); if(j&&j.length>20) d=j; }catch(e){}
+   }
+   return d;
   };
-  try{
-   if(built.cv.toBlob){
-    built.cv.toBlob(blob=>{
-     if(!blob){ fallbackDataURL(); return; }
-     let url="";
-     try{ url=URL.createObjectURL(blob); }catch(e){ fallbackDataURL(); return; }
-     if(touch){
-      // 手机上微信/浏览器多数禁止自动下载，直接给预览让玩家长按保存
-      done(url,built.name,true);
-     }else{
-      const ok=triggerDownload(url,built.name);
-      done(url,built.name,!ok);
-     }
-     setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} },60000);
-    },"image/png");
-   }else fallbackDataURL();
-  }catch(e){ fallbackDataURL(); }
+  const cardBlob=cb=>{
+   try{
+    if(built.cv.toBlob) built.cv.toBlob(b=>cb(b||null),"image/png");
+    else cb(null);
+   }catch(e){ cb(null); }
+  };
+  if(touch){
+   /* 手机上（尤其微信内置浏览器）不能靠 <a download> 下载，
+      而且**微信无法对 blob: 图片长按保存**（会提示"图片保存失败"、不是权限问题）。
+      所以这里直接把图片塞成 data URL 让 <img> 显示，长按保存走的是页面内数据，最稳。 */
+   const data=cardDataURL();
+   if(data){
+    cardState.blob=null;
+    const nm=data.indexOf("data:image/jpeg")===0
+      ? built.name.replace(/\.png$/,".jpg") : built.name;   // 换成 JPEG 时文件名也跟着改
+    done(data,nm,true);
+    cardBlob(b=>{ cardState.blob=b; });          // 顺手备好 blob 供「复制图片」用
+    return;
+   }
+   // 万一连 dataURL 都拿不到，退回 blob（至少能看、能截图）
+   cardBlob(b=>{
+    let url="";
+    if(b){ try{ url=URL.createObjectURL(b); }catch(e){ url=""; } }
+    done(url||"",built.name,true);
+   });
+   return;
+  }
+  // 电脑端：正常下载
+  const fallbackDataURL=()=>{
+   const data=cardDataURL();
+   if(!data){ if(btn) btn.textContent=old; toast("这台设备的浏览器不支持导出图片"); return; }
+   triggerDownload(data,built.name); done(data,built.name,false);
+  };
+  cardBlob(b=>{
+   if(!b){ fallbackDataURL(); return; }
+   let url="";
+   try{ url=URL.createObjectURL(b); }catch(e){ fallbackDataURL(); return; }
+   const ok=triggerDownload(url,built.name);
+   done(url,built.name,!ok);
+   setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} },60000);
+  });
  };
  let built=null;
  try{ built=buildShareCard(); }catch(e){ built=null; }
@@ -3109,7 +3153,32 @@ $("cardClose").onclick=hideCardPreview;
 $("cardDownload").onclick=()=>{
  if(!cardState.url) return;
  const ok=triggerDownload(cardState.url,cardState.name);
- toast(ok?"已开始下载":"长按图片保存到相册");
+ toast(ok?"已开始下载":"长按图片 → 保存到相册");
+};
+// 复制图片（微信长按保存失败时的备份方案）：直接写系统剪贴板，可粘贴到聊天里
+$("cardCopyImg").onclick=()=>{
+ const btn=$("cardCopyImg");
+ const old=btn?btn.textContent:"复制图片";
+ const say=t=>{ if(btn){ btn.textContent=t; setTimeout(()=>{ btn.textContent=old; },1800); } };
+ const doWrite=blob=>{
+  if(!blob||!navigator.clipboard||!window.ClipboardItem){ say("该浏览器不支持"); return; }
+  try{
+   const item=new ClipboardItem({ "image/png": blob });
+   navigator.clipboard.write([item]).then(()=>{ say("已复制 ✓"); toast("图片已复制，去聊天里粘贴即可"); })
+    .catch(()=>{ say("复制失败"); toast("复制失败，请长按图片保存或截图"); });
+  }catch(e){ say("复制失败"); }
+ };
+ if(cardState.blob){ doWrite(cardState.blob); return; }
+ // 没有现成 blob 就从 <img> 的 dataURL 转一个
+ const img=$("cardImg");
+ const src=(img&&img.src)||cardState.url||"";
+ if(src.indexOf("data:image/")!==0){ say("该浏览器不支持"); return; }
+ try{
+  const bin=atob(src.split(",")[1]);
+  const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  doWrite(new Blob([arr],{type:"image/png"}));
+ }catch(e){ say("复制失败"); }
 };
 // 调试用：控制台里 __CARD() 能看到生成卡片的尺寸与数据大小；__CARD_IMG() 拿到 PNG dataURL
 try{
