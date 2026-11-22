@@ -2028,10 +2028,13 @@ function continueFromStoryCard(){
  $("storyNext").blur();
  hideScreens();
  if(storyStep>=storyCards.length){
-  startWindup("正式挑战即将开始","收集灵感 · 避开压力",1.4,()=>transitionInto(launchRun,
+  // 这里**不再走 windup 前摇**：否则那 1.4 秒里旧场景还在跑，
+  // 玩家会看到"先跑了一会儿、再出旁白、又重新进无尽"的三段式，很乱。
+  // 直接进转场旁白 → 玩家点跳过 → launchRun() 进无尽，一气呵成。
+  transitionInto(launchRun,
    {head:"正式挑战 · 重新出发",
     body:"灵感从未真正消失，它们只是散落在了世界的各个角落。现在，重新出发，找回属于这个世界的灵感吧！",
-    quote:"旁白｜带着一路发现的灵感，决定下一次出发。"}));
+    quote:"旁白｜带着一路发现的灵感，决定下一次出发。"});
  }else{
   startWindup("✦ 灵感共鸣即将发生 ✦","准备好你的选择",1.35,()=>openQuestion(storyStep));
  }
@@ -2416,6 +2419,12 @@ try{
   }
   return rows;
  };
+}catch(e){}
+// 调试用：控制台里 __STATE() 能看到当前流程状态（排查"哪一步卡住/串了"很好用）
+try{
+ window.__STATE=()=>({phase, chapter, storyStep, qIndex, dist:Math.round(dist),
+  storyWait:(trans&&trans.story)?{waited:+(trans.waited||0).toFixed(2),ready:!!trans.ready,done:!!trans.done}:null,
+  gateSlow:+gateSlowT.toFixed(2), coverOn, lives});
 }catch(e){}
 function startLoop(){
  if(loopOn) return;
