@@ -14,6 +14,8 @@ canvas#world{position:absolute;inset:0;width:100%;height:100%;display:block;z-in
 .brand{display:flex;align-items:center;gap:9px}.logo{width:19px;height:19px;border:2px solid var(--mint);border-radius:50%;box-shadow:0 0 16px #9fffd077;position:relative}.logo:after{content:"";position:absolute;width:7px;height:7px;background:var(--pink);border-radius:50%;right:-3px;top:-2px}
 .pill{padding:7px 10px;border:1px solid #ffffff30;border-radius:20px;background:#10152b88}
 .screen{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:70px 18px 25px;overflow:auto;background:radial-gradient(ellipse at 50% 35%,#293b5c88,transparent 65%)}
+/* 封面：完全不透明，且与加载界面同一套深色底 —— 未点开始前看不到任何游戏画面 */
+#intro{background:radial-gradient(ellipse at 50% 32%,#283b5d,#11152b 62%,#090d1d)}
 .kicker{font-size:10px;letter-spacing:.28em;color:var(--mint);font-weight:800;margin-bottom:12px}
 h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;letter-spacing:.04em;text-shadow:0 0 30px #9fffd044}h1 span{color:var(--gold)}
 .subtitle{max-width:520px;color:#c4d2e5;font-size:13px;line-height:1.9;margin:14px auto}
@@ -104,6 +106,61 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 .bootbar{height:4px;border-radius:9px;background:#ffffff1f;overflow:hidden;margin:18px 0 10px}
 .bootbar b{display:block;height:100%;width:0%;border-radius:9px;background:linear-gradient(90deg,#9fffd0,#ffd58b);box-shadow:0 0 12px #9fffd0aa;transition:width .32s ease}
 .boottip{font-size:11px;letter-spacing:.14em;color:#8fa4c0;min-height:15px}
+/* —— 竖屏提示：手机竖着拿时盖住全屏，提示转横屏（纯 CSS 控制，转过来立刻消失） —— */
+#rotate{position:fixed;inset:0;z-index:9500;display:none;place-items:center;
+ background:radial-gradient(ellipse at 50% 32%,#283b5d,#11152b 62%,#090d1d);text-align:center;padding:24px}
+@media (orientation:portrait) and (max-width:900px){#rotate{display:grid}}
+#rotate .rbox{width:min(320px,84vw)}
+#rotate .ricon{width:104px;height:74px;margin:0 auto 18px;border:3px solid #9fffd0;border-radius:12px;position:relative;
+ box-shadow:0 0 26px #9fffd066;animation:rot 1.9s ease-in-out infinite}
+#rotate .ricon:after{content:"";position:absolute;left:50%;bottom:6px;width:16px;height:3px;margin-left:-8px;border-radius:3px;background:#9fffd0aa}
+@keyframes rot{0%,40%{transform:rotate(-90deg) scale(.86)}60%,100%{transform:rotate(0deg) scale(1)}}
+#rotate .rtit{font-size:17px;font-weight:1000;letter-spacing:.14em;color:#eafff8;text-shadow:0 0 20px #9fffd055}
+#rotate .rsub{font-size:12px;line-height:1.8;color:#9fb3cc;margin-top:10px}
+/* —— 横屏（手机横过来后高度很矮）的紧凑布局 —— */
+@media (max-height:560px) and (orientation:landscape){
+ .screen{padding:44px 16px 10px}
+ .kicker{font-size:9px;margin-bottom:6px;letter-spacing:.2em}
+ h1{font-size:clamp(26px,8vh,44px)}
+ .subtitle{font-size:12px;line-height:1.65;margin:8px auto;max-width:min(560px,84vw)}
+ #intro .hint{font-size:10px;line-height:1.55;margin-top:8px;max-width:min(620px,88vw)}
+ .primary{padding:11px 22px;min-height:42px;font-size:13px}
+ .secondary{padding:9px 16px;font-size:12px}
+ .panel{padding:13px 15px;max-height:calc(100dvh - 18px);overflow:auto;border-radius:16px}
+ .panel h2{font-size:clamp(17px,4.6vh,24px);margin:2px 0 6px}
+ .panel p{font-size:12px;line-height:1.6;margin:5px 0}
+ .question-no{font-size:9px}
+ .choices{gap:7px;margin-top:10px}
+ .choice{padding:9px 11px;font-size:12px;line-height:1.5;border-radius:11px}
+ .letter{width:26px;height:26px;border-radius:8px;font-size:12px}
+ #result{padding:0 10px}
+ .result-card{grid-template-columns:minmax(118px,34%) 1fr;max-height:calc(100dvh - 16px);border-radius:14px}
+ .rc-figure{padding:8px 6px;gap:4px}
+ .avatar{font-size:clamp(46px,14vh,84px)}
+ .avatar img{max-height:min(56vh,232px)}
+ .rc-figure-tag small{font-size:8px}.rc-figure-tag b{font-size:10px}
+ .rc-body{padding:9px 11px}
+ .rc-body .eyebrow{font-size:9px}
+ .rc-body h2{font-size:clamp(17px,4.4vh,24px);margin:3px 0}
+ .rc-body p{font-size:11px;line-height:1.55}
+ .scorebox{padding:8px;margin:7px 0;border-radius:10px}
+ .scorebig{font-size:22px}
+ .mini-stats{grid-template-columns:repeat(4,1fr);gap:4px;margin:7px 0}
+ .mini{padding:5px 3px}.mini b{font-size:13px}.mini span{font-size:8px}
+ .result-actions{margin-top:8px}.result-actions button{min-width:84px;font-size:11px;padding:9px 10px}
+ #hud{top:calc(env(safe-area-inset-top) + 42px)}
+ .stat{padding:5px 7px;font-size:10px;border-radius:9px}
+ .hearts{font-size:14px;padding:5px 8px;border-radius:9px}
+ #jump{width:72px;height:72px;font-size:11px;right:14px;bottom:calc(12px + env(safe-area-inset-bottom))}
+ #pause{left:12px;bottom:calc(14px + env(safe-area-inset-bottom));padding:8px 11px;font-size:11px}
+ #end{top:calc(env(safe-area-inset-top) + 86px);padding:7px 10px;font-size:11px}
+ #narrative{top:calc(env(safe-area-inset-top) + 88px);padding:9px 12px;width:min(680px,calc(100% - 26px))}
+ #narrative .nbody{font-size:12px;line-height:1.55;min-height:0}
+ #narrative .nhead,#narrative .nquote,#narrative .ncount{font-size:10px}
+ #windup .wring{width:104px;height:104px}
+ #windup .wtext{font-size:12px}
+ .top{font-size:10px}
+}
 </style></head>
 <body>
 <div id="boot"><div class="bootbox">
@@ -111,6 +168,11 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
  <div class="bootname">创想<span>大师</span></div>
  <div class="bootbar"><b id="bootFill"></b></div>
  <div class="boottip" id="bootTip">正在唤醒灵感世界…</div>
+</div></div>
+<div id="rotate"><div class="rbox">
+ <div class="ricon"></div>
+ <div class="rtit">请把手机转为横屏</div>
+ <div class="rsub">这个游戏按横屏设计：竖着拿会看不到完整画面。<br>把手机横过来就能继续。</div>
 </div></div>
 <div id="app">
 <canvas id="world"></canvas>
@@ -247,6 +309,22 @@ const PALETTES=[
  {sky:["#101b3d","#59477d","#bb6d9c"],far:"#44365f",near:"#302644",floor:"#211c34",light:"#ff9acb",accent:"#ffe08d"},
  {sky:["#111d3c","#394c76","#7884b5"],far:"#34436c",near:"#263354",floor:"#1b2744",light:"#b8c4ff",accent:"#ffe08d"}
 ];
+/* —— 仙灵配色：每一关（每个场景）都和该关背景拉开区分 ——
+   取色原则（已用 验证脚本/_hue_check.js 校验）：
+     与「该关背景中间天空色」的色相相差 73°~120°——
+     · ≥55°：不会糊在背景里（不是相近色）
+     · 避开 180° 附近：不用刺眼的对比色
+   同时仙灵永远比背景亮得多，靠明度再拉一层区分。
+   要改配色：改 验证脚本/_gen_hero_tint.js 里的 ABS_HUE 重新生成即可。 */
+const HERO_TINT=[
+ {core:"#fdf5dd",edge:"#f4d67c"},   // 0 青绿花园 → 暖金
+ {core:"#ddeefd",edge:"#7cbcf4"},   // 1 紫粉天幕 → 天蓝
+ {core:"#ddfdea",edge:"#7cf4ac"},   // 2 深蓝星海 → 薄荷绿
+ {core:"#f8ddfd",edge:"#e07cf4"},   // 3 靛蓝远山 → 淡紫
+ {core:"#ddfdf4",edge:"#7cf4d4"},   // 4 紫霞 → 青碧
+ {core:"#fde8dd",edge:"#f4a47c"},   // 5 暗紫 → 暖橙
+ {core:"#fdddf7",edge:"#f47cdc"}    // 6 冷蓝 → 樱粉
+];
 
 /* ============================================================
    3. 状态
@@ -264,6 +342,9 @@ let trans=null, fx=[];            // 场景切换：{dir:'out'|'in', t, dur, nex
 let gate=null, gateTouched=false, gateWarn=false, lastSpecialAt=-9999, trailAcc=0;
 let runTime=0;                  // 无尽模式已跑时长（秒），用于难度递增
 let clutter=[], clutterT=0;      // 干扰视线的零散装饰障碍（不参与碰撞）
+let ringFx=[];                   // 拾取反馈：以仙灵为圆心的收缩圆
+let coverOn=true;                // 封面（未开始）：只画深色底，不画游戏画面
+let hintT=0;                     // 开场「轻点小跳 · 按住大跳」提示的计时
 let score=0, scoreAcc=0, scoreBonus=0, shards=0, mics=0, brushes=0, lives=3;
 let ents=[], parts=[];
 let sceneA=0, sceneB=0, sceneMix=1;
@@ -425,7 +506,7 @@ function warmSprites(){
 /* ============================================================
    5. 尺寸 / 渐变缓存 / 星空
    ============================================================ */
-let gcache={sky:[],glow:[],ground:[],vign:null};
+let gcache={sky:[],glow:[],ground:[],vign:null,cover:null};
 let starPaths=[];
 function resize(){
  dpr=Math.min(window.devicePixelRatio||1,2);
@@ -433,7 +514,11 @@ function resize(){
  cv.width=Math.floor(W*dpr); cv.height=Math.floor(H*dpr);
  cv.style.width=W+"px"; cv.style.height=H+"px";
  ctx.setTransform(dpr,0,0,dpr,0,0);
- gcache={sky:[],glow:[],ground:[],vign:null};
+ gcache={sky:[],glow:[],ground:[],vign:null,cover:null};
+ // 手机竖着拿：盖住全屏提示转横屏，并自动暂停（避免在看不见画面的情况下掉血）
+ const portrait = (typeof window!=="undefined")&&window.matchMedia
+   && window.matchMedia("(orientation:portrait) and (max-width:900px)").matches;
+ if(portrait && playing() && !paused) pause();
  buildStars(); warmSprites();
  draw();
 }
@@ -457,6 +542,13 @@ function skyGrad(scene){
  g=ctx.createLinearGradient(0,0,0,H);
  g.addColorStop(0,p.sky[0]); g.addColorStop(.58,p.sky[1]); g.addColorStop(1,p.sky[2]);
  gcache.sky[scene]=g; return g;
+}
+// 封面底色：与加载界面完全一致的深色渐变（未开始前画面不该露出来）
+function coverGrad(){
+ if(gcache.cover) return gcache.cover;
+ const g=ctx.createRadialGradient(W*.5,H*.32,10,W*.5,H*.32,Math.max(W,H)*.86);
+ g.addColorStop(0,"#283b5d"); g.addColorStop(.62,"#11152b"); g.addColorStop(1,"#090d1d");
+ gcache.cover=g; return g;
 }
 function glowGrad(scene){
  let g=gcache.glow[scene]; if(g) return g;
@@ -781,6 +873,14 @@ function draw(){
  ctx.setTransform(dpr,0,0,dpr,ox*dpr,oy*dpr);
  ctx.clearRect(-PAD,-PAD,W+PAD*2,H+PAD*2);
 
+ // 封面（还没点「开启灵感旅程」）：只铺一层和加载界面一样的深色底，不画任何游戏画面
+ if(coverOn){
+  const bg=coverGrad();
+  ctx.fillStyle=bg; ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return;
+ }
+
  // 天空（渐变对象已缓存；跨场景只做一次交叉淡入）
  ctx.fillStyle=skyGrad(sceneA); ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2);
  if(sceneMix<1&&sceneA!==sceneB){
@@ -800,6 +900,8 @@ function draw(){
  drawClutter(false);                        // 背景层干扰物
  for(let i=0;i<ents.length;i++) drawEnt(ents[i],gy,pal);
  drawHero(pal,gy);
+ drawRings();                               // 拾取反馈：以仙灵为圆心的收缩圆
+ drawStartHint(gy);                         // 开场「轻点小跳 · 按住大跳」提示
  drawClutter(true);                         // 前景层干扰物（真的挡视线）
  drawParts();
  drawTrans();
@@ -861,11 +963,14 @@ function drawSet(pal,gy,tr){
    for(let i=0;i<5;i++){ const x=wrap(i*190-tr*.38,W+220), y=gy-150-(i%2)*45; blitBottom(f,x,y,.04*(i%2?1:-1)); }
   }
   if(sceneB===4){
+   // 背景里的麦克风/画笔只是布景，不是可收集物 —— 压到 35% 透明度，避免被误认成道具
    for(let i=0;i<4;i++){
     const x=wrap(i*250-tr*.3,W+260), y=gy-190-(i%2)*50;
-    ctx.strokeStyle="#8feaff88"; ctx.lineWidth=4;
+    ctx.strokeStyle="#8feaff44"; ctx.lineWidth=4;
     ctx.beginPath(); ctx.ellipse(x,y,38,12,time*.4+i,0,TAU); ctx.stroke();
+    ctx.globalAlpha=.35;
     blit(itemSpr(i%2?"mic":"brush"),x,y-30,0,.72);
+    ctx.globalAlpha=1;
    }
   }
   if(sceneB===5){
@@ -941,8 +1046,8 @@ function drawHero(pal,gy){
  const px=playerX(), groundY0=gy-6-py;
  const bob=Math.sin(time*2.4)*3.2;                    // 空中轻浮
  const cy=groundY0-40+bob;                            // 光球中心
- const core=sceneB===1?"#ffd7ee":"#c9fff0";           // 主体色随场景微调
- const edge=sceneB===1?"#ff9acb":"#9fffd0";
+ const tint=HERO_TINT[sceneB]||HERO_TINT[0];
+ const core=tint.core, edge=tint.edge;               // 每关一套配色，和该关背景拉开区分
  const flap=Math.sin(time*17);                        // 翅膀扇动
  const alpha=blink?.28:1;
  ctx.save();
@@ -993,9 +1098,85 @@ function drawHero(pal,gy){
  for(let i=0;i<3;i++){
   const a=time*1.9+i*2.09, rr=17+Math.sin(time*3+i)*3;
   ctx.globalAlpha=alpha*(.5+.4*Math.sin(time*4+i));
-  ctx.fillStyle=i===1?"#ffd58b":edge;
+  ctx.fillStyle=i===1?tint.edge:edge;
   ctx.beginPath(); ctx.arc(px+Math.cos(a)*rr,cy+Math.sin(a)*rr*.72,1.7,0,TAU); ctx.fill();
  }
+ ctx.restore();
+}
+/* —— 拾取反馈：以仙灵为圆心的收缩圆（从外往内收，收到中心后散掉）—— */
+function pushRing(color,strong){
+ ringFx.push({t:0,dur:strong?.62:.5,r0:strong?150:112,color:color,strong:!!strong});
+ if(ringFx.length>8) ringFx.shift();
+}
+function updateRings(dt){
+ let k=0;
+ for(let i=0;i<ringFx.length;i++){
+  const r=ringFx[i]; r.t+=dt;
+  if(r.t<r.dur) ringFx[k++]=r;
+ }
+ ringFx.length=k;
+}
+function drawRings(){
+ if(!ringFx.length) return;
+ const gy=groundY(), px=playerX();
+ const cy=gy-6-py-40+Math.sin(clock*2.4)*3.2;          // 与 drawHero 的光球圆心一致
+ for(let i=0;i<ringFx.length;i++){
+  const r=ringFx[i];
+  const p=clamp(r.t/r.dur,0,1);
+  const rad=r.r0*(1-p)*(1-p*0.15);                     // 半径由外向内收缩
+  const a=Math.pow(1-p,1.35);
+  if(rad<1.5) continue;
+  ctx.save();
+  ctx.globalAlpha=a*(r.strong?.85:.7);
+  ctx.strokeStyle=r.color;
+  ctx.lineWidth=(r.strong?4.5:3.2)*(1-p*.55)+1;
+  ctx.beginPath(); ctx.arc(px,cy,rad,0,TAU); ctx.stroke();
+  // 内侧第二道细环，慢半拍，形成「层层收拢」的层次
+  if(p>0.14){
+   ctx.globalAlpha=a*.5; ctx.lineWidth=1.6;
+   ctx.beginPath(); ctx.arc(px,cy,rad*.62,0,TAU); ctx.stroke();
+  }
+  // 收到圆心时亮一下
+  if(p>0.62){
+   const gp=(p-0.62)/0.38;
+   ctx.globalAlpha=(1-gp)*.55; ctx.fillStyle=r.color;
+   ctx.beginPath(); ctx.arc(px,cy,7*(1-gp)+2,0,TAU); ctx.fill();
+  }
+  ctx.restore();
+ }
+}
+/* —— 开场操作提示：放在角色初始出现位置的地面上方，字体加大，显示 8 秒后淡出 —— */
+const HINT_SEC=8.0;
+function drawStartHint(gy){
+ if(coverOn) return;
+ if(chapter!=="prologue"||storyStep!==0) return;
+ if(hintT>=HINT_SEC) return;
+ const a=Math.min(clamp(hintT/0.45,0,1),clamp((HINT_SEC-hintT)/0.9,0,1));
+ if(a<=0.01) return;
+ const px=playerX();
+ const big=Math.round(clamp(Math.min(W,H)*0.052,18,34));
+ const small=Math.round(clamp(Math.min(W,H)*0.030,13,20));
+ const F="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif";
+ const f1="900 "+big+"px "+F, f2="800 "+small+"px "+F;
+ const t1="轻点小跳 · 按住大跳";
+ const t2="空中再按一次 = 二连跳";
+ ctx.save();
+ ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+ ctx.font=f1; const w1=ctx.measureText(t1).width;
+ ctx.font=f2; const w2=ctx.measureText(t2).width;
+ const bw=Math.max(w1,w2)+40, bh=big+small+30;
+ let bx=px-bw/2;
+ if(bx<12) bx=12;
+ if(bx+bw>W-12) bx=W-12-bw;
+ const cx=bx+bw/2, by=gy-112-bh;               // 地面上方（留出仙灵的高度）
+ ctx.globalAlpha=a*.66; ctx.fillStyle="#0a1526";
+ rr(ctx,bx,by,bw,bh,15); ctx.fill();
+ ctx.globalAlpha=a*.5; ctx.strokeStyle="#9fffd0"; ctx.lineWidth=1.6;
+ rr(ctx,bx,by,bw,bh,15); ctx.stroke();
+ ctx.globalAlpha=a; ctx.fillStyle="#eafff8"; ctx.font=f1;
+ ctx.fillText(t1,cx,by+big+13);
+ ctx.globalAlpha=a*.92; ctx.fillStyle="#9fffd0"; ctx.font=f2;
+ ctx.fillText(t2,cx,by+bh-13);
  ctx.restore();
 }
 function drawParts(){
@@ -1021,8 +1202,15 @@ function drawFx(){
 function drawTrans(){
  const PAD=48;
  if(trans){
-  const p=clamp(1-trans.t/trans.dur,0,1);
-  // 有旁白时暗幕更深，让字更清楚
+  // 旁白转场没有固定时长（等玩家点击），暗幕按“淡入后保持、跳过时淡出”来算
+  let p;
+  if(trans.story&&trans.dir==="out"){
+   const inA=clamp((trans.waited||0)/0.45,0,1);
+   const outA=trans.done?clamp(trans.t/STORY_FADE,0,1):1;
+   p=Math.min(inA,outA);            // 0→1 表示“暗幕有多满”
+  }else{
+   p=clamp(1-trans.t/trans.dur,0,1);
+  }
   const base=trans.story?0.42:0.66;
   const dim=trans.dir==="out"?Math.min(base,p*.9):Math.max(0,(1-p)*base);
   if(dim>0.002){ ctx.fillStyle="rgba(8,12,24,"+dim.toFixed(3)+")"; ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2); }
@@ -1472,9 +1660,9 @@ function startGateWarn(){
 function collect(o){
  o.got=true;
  const gy=groundY();
- if(o.type==="mic"){ mics++; if(chapter==="run")scoreBonus+=60; burst(o.x,gy-o.alt,"#ffd36e",10); toast("🎤 麦克风灵感 +1"); }
- else if(o.type==="brush"){ brushes++; if(chapter==="run")scoreBonus+=60; burst(o.x,gy-o.alt,"#ff82c5",10); toast("🖌️ 画笔灵感 +1"); }
- else { shards++; if(chapter==="run")scoreBonus+=20; burst(o.x,gy-o.alt,"#9fffd0",9); toast("✧ 灵感碎片 +1"); }
+ if(o.type==="mic"){ mics++; if(chapter==="run")scoreBonus+=60; burst(o.x,gy-o.alt,"#ffd36e",10); pushRing("#ffd36e",true); toast("🎤 麦克风灵感 +1"); }
+ else if(o.type==="brush"){ brushes++; if(chapter==="run")scoreBonus+=60; burst(o.x,gy-o.alt,"#ff82c5",10); pushRing("#ff82c5",true); toast("🖌️ 画笔灵感 +1"); }
+ else { shards++; if(chapter==="run")scoreBonus+=20; burst(o.x,gy-o.alt,"#9fffd0",9); pushRing("#9fffd0",false); }
  syncCount();
 }
 // 受击反馈：只做闪白（+暗角+碎屑+无敌闪烁），不做顿帧/震屏，避免被误认为卡顿
@@ -1602,14 +1790,21 @@ function updateFx(dt){
  }
  fx.length=k;
 }
-// 退场 → 执行 next()（next 内部的 beginPrologue/launchRun 会自动开始入场渐显）
-// story 传了就额外在转场背景上居中放大播旁白（默认 5 秒，可按空格/轻触提前跳过）
-const STORY_BEAT=5.0;
+// 退场 → 执行 next()（next 内部的 beginPrologue/launchRun 会自动开始渐显）
+/* 转场旁白：**不再自动关闭**。
+   · 前 STORY_WAIT(5s) 之内按空格/轻触无效，只是把文字看完
+   · 满 5 秒后画面下方出现「点击跳过」提示，玩家点一下才继续
+   · 这样才能保证每段旁白至少被看到 5 秒，又不是强制干等 */
+const STORY_WAIT=5.0;      // 最少展示时长（秒），期间不能跳过
+const STORY_FADE=0.42;     // 跳过之后的快速淡出时长
 function transitionInto(next,story){
  if(trans) return;
  phase="trans";
- const dur=story?STORY_BEAT:0.5;
- trans={dir:"out",t:dur,dur:dur,next:next,story:story||null};
+ if(story){
+  trans={dir:"out",t:0,dur:0,next,story,waited:0,ready:false,done:false};
+ }else{
+  trans={dir:"out",t:0.5,dur:0.5,next,story:null};
+ }
  spawnTransFx("out");
  jumpHeld=false;
 }
@@ -1631,8 +1826,11 @@ function drawStoryBeat(){
  if(!trans||!trans.story) return;
  const st=trans.story;
  const PAD=48;
- const p=clamp(1-trans.t/trans.dur,0,1);
- const a=clamp(Math.min(p/0.10,(1-p)/0.10),0,1);     // 淡入 0.5s / 淡出 0.5s
+ const waited=trans.waited||0;
+ // 淡入 0.35s；已经点跳过之后才是淡出
+ const inA=clamp(waited/0.35,0,1);
+ const outA=trans.done?clamp(trans.t/STORY_FADE,0,1):1;
+ const a=Math.min(inA,outA);
  if(a<=0.001) return;
  ctx.fillStyle="rgba(6,10,20,"+(0.32*a).toFixed(3)+")";
  ctx.fillRect(-PAD,-PAD,W+PAD*2,H+PAD*2);
@@ -1660,19 +1858,33 @@ function drawStoryBeat(){
   const qy=startY+lines.length*lh+qPx*1.2;
   for(let i=0;i<qLines.length;i++) ctx.fillText(qLines[i],W/2,qy+i*qPx*1.5);
  }
- // 提示
- if(p>0.16){
-  const hPx=Math.round(clamp(Math.min(W,H)*0.016,11,14));
-  ctx.font="700 "+hPx+"px system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif";
-  ctx.fillStyle="rgba(200,214,233,"+(a*0.55*(0.6+0.4*Math.sin(clock*3))).toFixed(3)+")";
-  ctx.fillText("轻触 / 空格 继续",W/2,H*0.88);
+ // 底部提示：前 5 秒不出「跳过」，避免玩家手快把旁白点掉
+ if(!trans.done){
+  const hPx=Math.round(clamp(Math.min(W,H)*0.018,12,16));
+  const HF="800 "+hPx+"px system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif";
+  if(trans.ready){
+   const blink=0.66+0.34*Math.sin(clock*4.2);
+   ctx.font=HF;
+   ctx.fillStyle="rgba(159,255,208,"+(a*blink).toFixed(3)+")";
+   ctx.fillText("轻触屏幕 / 空格 · 点击跳过",W/2,H*0.88);
+  }else{
+   // 等待中：显示还差多久才能跳过（细细一条进度，不写文字，保持画面干净）
+   const k=clamp(waited/STORY_WAIT,0,1);
+   const barW=Math.min(W*0.3,220), bx=W/2-barW/2, by=H*0.88;
+   ctx.fillStyle="rgba(255,255,255,"+(a*0.14).toFixed(3)+")";
+   rr(ctx,bx,by,barW,4,2); ctx.fill();
+   ctx.fillStyle="rgba(159,255,208,"+(a*0.7).toFixed(3)+")";
+   rr(ctx,bx,by,Math.max(3,barW*k),4,2); ctx.fill();
+  }
  }
  ctx.textBaseline="alphabetic";
 }
-// 播放中按空格/轻触可提前结束旁白
+// 空格/轻触：满 5 秒之后才算「跳过」，之前按下无效（也不打断旁白）
 function skipStoryBeat(){
- if(trans&&trans.dir==="out"&&trans.story&&trans.t>0.55){ trans.t=Math.min(trans.t,0.55); return true; }
- return false;
+ if(!trans||trans.dir!=="out"||!trans.story||trans.done) return false;
+ if(!trans.ready) return true;                 // 前 5 秒：吃掉这次按键，但不结束旁白
+ trans.done=true; trans.t=STORY_FADE; trans.dur=STORY_FADE;
+ return true;
 }
 function beginPrologue(step){
  chapter="prologue"; storyStep=step;
@@ -1922,15 +2134,24 @@ function update(dt){
  if(shake>0) shake=Math.max(0,shake-dt*46);
  if(invuln>0) invuln=Math.max(0,invuln-dt);
  updateParts(dt);
+ updateRings(dt);
  updateFx(dt);
+ if(coverOn) return;                     // 封面期间世界不推进（只有待机呼吸感）
+ if(chapter==="prologue"&&storyStep===0&&hintT<HINT_SEC) hintT+=dt;
  updateScene(dt);
  updateClutter(dt,speed);
- // 过渡计时（两种情况：退场计时完毕才切场景；入场只是渐显）
+ // 过渡计时：普通转场倒计时到 0 就切场景；旁白转场要等玩家点「跳过」才走
  if(trans){
-  trans.t-=dt;
-  if(trans.t<=0){
-   if(trans.dir==="out"){ const fn=trans.next; trans=null; if(fn) fn(); }
-   else{ trans=null; }
+  if(trans.story&&trans.dir==="out"&&!trans.done){
+   // 旁白：只累计等待时间，不自动结束
+   trans.waited=(trans.waited||0)+dt;
+   if(!trans.ready&&trans.waited>=STORY_WAIT) trans.ready=true;
+  }else{
+   trans.t-=dt;
+   if(trans.t<=0){
+    if(trans.dir==="out"){ const fn=trans.next; trans=null; if(fn) fn(); }
+    else{ trans=null; }
+   }
   }
  }
 
@@ -2034,11 +2255,12 @@ function resetAll(){
  heartEl.textContent="♥ ♥ ♥";
  windupEl.style.display="none"; flashEl.classList.remove("hit");
  $("end").style.display="none"; $("endFromPause").style.display="none";
+ ringFx=[]; hintT=0; coverOn=true;      // 回到封面态：只画深色底，等玩家点开始
 }
 function startGame(){
  hideScreens(); resetAll();
+ coverOn=false;                          // 离开封面，开始画真正的游戏画面
  beginPrologue(0);
- toast("轻点小跳 · 按住大跳 · 空中再按一次二连跳");
 }
 function restart(){
  stopLoop(); hideScreens(); resetAll();
@@ -2052,6 +2274,7 @@ let QUICK_RUN=false;
 function enterEndlessNow(){
  if(!DEBUG_ENTRY) return;
  QUICK_RUN=true; stopLoop(); hideScreens(); resetAll();
+ coverOn=false;
  try{ bootFinish("quick-entry"); }catch(e){}   // 测试入口就别等 Loading 了
  launchRun(); toast("快速模式：直接进入无尽模式");
 }
