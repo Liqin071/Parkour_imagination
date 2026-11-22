@@ -1209,7 +1209,7 @@ function sfxPlay(c,kind){
    ============================================================ */
 const MUSIC={
  on:true, playing:false, timer:0, nextT:0, step:0,
- stepSec:0.33,               // 每步 0.33 秒（八分音符，约 91 BPM 的四拍，轻快好跑）
+ stepSec:0.52,               // 每步 0.52 秒（约 115 BPM 的八分音符，慢悠悠）
  vol:1.0,                    // 音乐总音量（改这一个数就能整体调大小）
  master:null
 };
@@ -1222,29 +1222,29 @@ const MUSIC_CHORDS=[
  {pad:[ 87.31,130.81],arp:[349.23,440.00,523.25,440.00]},   // F
  {pad:[ 98.00,146.83],arp:[392.00,493.88,587.33,493.88]}    // G
 ];
-// —— 四段旋律，每段 4 小节 × 8 步 = 32 步；-1 是休止。节奏比第一版密、带切分，听起来更跳 ——
-const MUSIC_SEC_A=[                                        // A 段：主题，蹦跳感
- 0,-1, 2, 3,-1, 4,-1, 3,
- 2,-1, 1, 2,-1, 0,-1,-1,
- 4,-1, 5, 4, 3,-1, 2,-1,
- 1, 2, 3,-1, 2,-1, 0,-1];
+// —— 四段旋律，每段 4 小节 × 8 步 = 32 步；-1 是休止 ——
+const MUSIC_SEC_A=[                                        // A 段：主题，最素
+ 0,-1,4,-1, 2,-1,3,-1,
+ 1,-1,5, 3, 2,-1,0,-1,
+ 4,-1,2,-1, 3, 2,1,-1,
+ 0,-1,-1, 2, 1,-1,0,-1];
 const MUSIC_SEC_B=[                                        // B 段：走高、更亮
- 5,-1, 4, 5, 3,-1, 2,-1,
- 1, 2,-1, 4, 5,-1, 3,-1,
- 5, 3, 4,-1, 5,-1, 2, 3,
- 4,-1, 1, 2, 0,-1,-1,-1];
-const MUSIC_SEC_C=[                                        // C 段：切分更调皮，收在稳定的主音
- 0, 2,-1, 3, 4,-1, 3, 2,
--1, 1, 2,-1, 3,-1, 4,-1,
- 5,-1, 4, 3,-1, 2, 1,-1,
- 0,-1, 1, 2,-1, 0,-1,-1];
+ 5,-1,4,-1, 5,-1,2,-1,
+ 3,-1,2, 1, 0,-1,2,-1,
+ 5, 4,-1, 3, 2,-1,5,-1,
+ 4,-1,3, 2, 0,-1,-1,-1];
+const MUSIC_SEC_C=[                                        // C 段：稀疏、收束
+ 0,-1,-1, 1,-1, 2,-1,-1,
+ 3,-1,-1, 2,-1, 1,-1,-1,
+ 0,-1,4,-1, 3,-1,2,-1,
+ 1,-1,0,-1,-1,-1,-1,-1];
 const MUSIC_SECTIONS=[MUSIC_SEC_A,MUSIC_SEC_B,MUSIC_SEC_A,MUSIC_SEC_C];   // 第 3 段是 A 段加和声
-const MUSIC_TOTAL=MUSIC_SECTIONS.length*32;                               // 128 步 ≈ 45 秒
-/* 纯函数：第 step 步要发哪些音。返回 [{f,d,g,t,type,voice}]，方便单独核验与调参。
-   sec 0 = A（低音拨弦 + 主旋律 + 沙锤）
-   sec 1 = B（再叠分解和弦 + 密集沙锤）
-   sec 2 = A'（再叠下行三度和声）
-   sec 3 = C（切分主旋律 + 高处点星 + 沙锤） */
+const MUSIC_TOTAL=MUSIC_SECTIONS.length*32;                               // 128 步 ≈ 66 秒
+/* 纯函数：第 step 步要发哪些音。返回 [{f,d,g,t}]，方便单独核验与调参。
+   sec 0 = A（只有铺底+主旋律）
+   sec 1 = B（+ 分解和弦琶音）
+   sec 2 = A'（+ 下行三度和声 + 琶音）
+   sec 3 = C（稀疏主旋律 + 高处点星） */
 function musicPlan(step){
  const out=[];
  const s=((step%MUSIC_TOTAL)+MUSIC_TOTAL)%MUSIC_TOTAL;
@@ -1252,53 +1252,23 @@ function musicPlan(step){
  const i=s%32;
  const bar=(i/8)|0;
  const ch=MUSIC_CHORDS[bar%MUSIC_CHORDS.length];
- // ① 低音拨弦：每小节 1、3 拍根音，2、4 拍五度（短促，撑起活泼的律动）
- if(i%4===0) out.push({f:ch.pad[0],d:0.34,g:0.052,type:"triangle",voice:"bass"});
- else if(i%4===2) out.push({f:ch.pad[1],d:0.26,g:0.030,type:"triangle",voice:"bass"});
- // ② 每小节开头一层很轻的铺底，不糊（时间短一些，配快节奏）
- if(i%8===0) out.push({f:ch.pad[0]*2,d:1.5,g:0.012,voice:"pad"});
- // ③ 主旋律：钟琴（短促跳音）+ 高八度泛音
+ // ① 铺底：每小节第一步换一次和弦（根音 + 五度，长音）
+ if(i%8===0){ out.push({f:ch.pad[0],d:3.6,g:0.030}); out.push({f:ch.pad[1],d:3.6,g:0.020}); }
+ // ② 主旋律：钟琴 + 一个很轻的高八度泛音
  const v=MUSIC_SECTIONS[sec][i];
  if(v>=0){
-  out.push({f:MUSIC_SCALE[v],d:0.30,g:0.058,voice:"lead"});
-  out.push({f:MUSIC_SCALE[v]*2,d:0.16,g:0.014,voice:"lead"});
-  // ④ A' 段：下方三度和声（合奏）
-  if(sec===2&&v>0) out.push({f:MUSIC_SCALE[v-1],d:0.32,g:0.024,t:0.03,voice:"harm"});
+  out.push({f:MUSIC_SCALE[v],d:0.85,g:0.062});
+  out.push({f:MUSIC_SCALE[v]*2,d:0.40,g:0.016});
+  // ③ A' 段：给主旋律垫一条下方的三度和声（合奏感）
+  if(sec===2&&v>0) out.push({f:MUSIC_SCALE[v-1],d:0.90,g:0.030,t:0.045});
  }
- // ⑤ B / A' 段：正拍上的分解和弦点缀
- if((sec===1||sec===2)&&i%2===0) out.push({f:ch.arp[(i/2|0)%ch.arp.length],d:0.34,g:0.014,voice:"arp"});
- // ⑥ C 段：高处点星（风铃音高）
- if(sec===3&&(i%8===3||i%8===6)) out.push({f:CHIME[(i/3|0)%CHIME.length],d:0.40,g:0.010,voice:"star"});
- // ⑦ 沙锤：A/A'/C 段在反拍，B 段铺满，撑起"活泼"的骨架
- const shakeGain=0.016;
- if(sec===1){ out.push({f:0,d:0.05,g:shakeGain,type:"noise",voice:"shaker"}); }
- else if(i%2===1){ out.push({f:0,d:0.05,g:shakeGain,type:"noise",voice:"shaker"}); }
+ // ④ B / A' 段：每两步一个轻柔的分解和弦音
+ if((sec===1||sec===2)&&i%2===0){
+  out.push({f:ch.arp[(i/2|0)%ch.arp.length],d:0.60,g:0.015});
+ }
+ // ⑤ C 段：偶尔在高处点一颗星（用拾取那套风铃音高）
+ if(sec===3&&(i%8===3||i%8===6)) out.push({f:CHIME[(i/3|0)%CHIME.length],d:0.55,g:0.012});
  return out;
-}
-/* 沙锤/轻响板：用一小段高通噪声，比振荡器更像打击乐且不刺耳 */
-function musicNoiseBuf(c){
- if(MUSIC._nb) return MUSIC._nb;
- try{
-  const len=Math.max(64,Math.floor(c.sampleRate*0.06));
-  const b=c.createBuffer(1,len,c.sampleRate);
-  const d=b.getChannelData(0);
-  for(let i=0;i<len;i++){ const k=1-i/len; d[i]=(Math.random()*2-1)*k*k*k; }
-  MUSIC._nb=b; return b;
- }catch(e){ return null; }
-}
-function musicShaker(t,gain){
- const c=SFX.ctx; if(!c||!MUSIC.master) return;
- const buf=musicNoiseBuf(c); if(!buf) return;
- try{
-  const s=c.createBufferSource(); s.buffer=buf;
-  const f=c.createBiquadFilter(); f.type="highpass"; f.frequency.value=5600;
-  const g=c.createGain();
-  g.gain.setValueAtTime(0,t);
-  g.gain.linearRampToValueAtTime(gain*(MUSIC.vol||1)*(0.85+Math.random()*0.3),t+0.004);
-  g.gain.exponentialRampToValueAtTime(0.0001,t+0.06);
-  s.connect(f); f.connect(g); g.connect(MUSIC.master);
-  s.start(t); s.stop(t+0.08);
- }catch(e){}
 }
 function musicNode(f,t,dur,gain,type){
  const c=SFX.ctx; if(!c) return;
@@ -1307,7 +1277,7 @@ function musicNode(f,t,dur,gain,type){
  o.frequency.setValueAtTime(f,t);
  g.gain.setValueAtTime(0,t);
  // 轻微的音量抖动，让每一圈都不完全一样（听感上不容易腻）
- g.gain.linearRampToValueAtTime(gain*(MUSIC.vol||1)*(0.9+Math.random()*0.2),t+0.015);
+ g.gain.linearRampToValueAtTime(gain*(MUSIC.vol||1)*(0.9+Math.random()*0.2),t+0.02);
  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
  o.connect(g); g.connect(MUSIC.master||SFX.master||c.destination);
  o.start(t); o.stop(t+dur+0.05);
@@ -1320,9 +1290,8 @@ function musicSchedule(){
   const notes=musicPlan(MUSIC.step);
   for(let k=0;k<notes.length;k++){
    const n=notes[k];
-   const tt=MUSIC.nextT+(n.t||0)+(Math.random()-0.5)*0.010;
-   if(n.type==="noise") musicShaker(tt,n.g);              // 沙锤
-   else musicNode(n.f,tt,n.d,n.g,n.type||"sine");
+   // 时间上再抖 10 毫秒左右，避免听起来像打点机
+   musicNode(n.f,MUSIC.nextT+(n.t||0)+(Math.random()-0.5)*0.012,n.d,n.g);
   }
   MUSIC.nextT+=MUSIC.stepSec;
   MUSIC.step++;
