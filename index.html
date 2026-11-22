@@ -12,6 +12,10 @@ button{font:inherit;color:inherit;border:0;cursor:pointer;touch-action:manipulat
 canvas#world{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:1;touch-action:none;transition:filter .2s ease-out}
 .top{position:absolute;z-index:3;top:calc(env(safe-area-inset-top) + 12px);left:15px;right:15px;display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.12em;color:#c6d8e9;pointer-events:none}
 .brand{display:flex;align-items:center;gap:9px}.logo{width:19px;height:19px;border:2px solid var(--mint);border-radius:50%;box-shadow:0 0 16px #9fffd077;position:relative}.logo:after{content:"";position:absolute;width:7px;height:7px;background:var(--pink);border-radius:50%;right:-3px;top:-2px}
+.topright{display:flex;align-items:center;gap:8px}
+#music{pointer-events:auto;padding:6px 11px;border-radius:20px;background:#10152b88;border:1px solid #ffffff30;font-size:11px;letter-spacing:.06em;color:#c6d8e9;transition:opacity .2s}
+#music:active{transform:scale(.96)}
+#music.off{opacity:.42;text-decoration:line-through}
 .pill{padding:7px 10px;border:1px solid #ffffff30;border-radius:20px;background:#10152b88}
 .screen{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:70px 18px 25px;overflow:auto;background:radial-gradient(ellipse at 50% 35%,#293b5c88,transparent 65%)}
 /* 封面：完全不透明，且与加载界面同一套深色底 —— 未点开始前看不到任何游戏画面 */
@@ -184,7 +188,7 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 </div></div>
 <div id="app">
 <canvas id="world"></canvas>
-<div class="top"><div class="brand"><i class="logo"></i><b>IMAGINATION WORLD / 创想大师</b></div><span class="pill" id="chapter">灵感世界 · 序章</span></div>
+<div class="top"><div class="brand"><i class="logo"></i><b>IMAGINATION WORLD / 创想大师</b></div><div class="topright"><button id="music" title="背景音乐开关">♪ 音乐</button><span class="pill" id="chapter">灵感世界 · 序章</span></div></div>
 
 <section class="screen" id="intro">
  <div class="kicker">A JOURNEY TO REBUILD INSPIRATION</div><h1>创想<span>大师</span></h1>
@@ -1138,13 +1142,16 @@ function drawHero(pal,gy){
  }
  ctx.restore();
 }
-/* —— 拾取音效：用 WebAudio 现场合成，不额外加载音频文件 ——
-   浏览器要求「先有用户操作」才能出声，所以第一次 pointerdown/keydown 时解锁。 */
-const SFX={ctx:null,on:true};
+/* ============================================================
+   音效 + 背景音乐：全部用 WebAudio 现场合成，不加载任何音频文件
+   浏览器要求「先有用户操作」才能出声，所以第一次 pointerdown/keydown 时解锁。
+   ============================================================ */
+const SFX={ctx:null,on:true,master:null};/* 碎片 = 风铃：单音、清脆、很短（高频 + 一点点金属泛音），每次拾取随机挑一个音节，
+   连着吃几颗就像风铃被风吹到那样叮叮当当 */
+const CHIME=[1568.0,1760.0,2093.0,2349.3,2637.0,3136.0];   // G6 A6 C7 D7 E7 G7
 const SFX_TONE={
- shard:[{f:1046,g:.075,d:.14},{f:1568,g:.05,d:.10}],   // 碎片：两声极轻的叮
- mic:  [{f:784,g:.09,d:.16},{f:1175,g:.07,d:.20}],
- brush:[{f:698,g:.09,d:.16},{f:1046,g:.07,d:.20}]
+ mic:  [{f:784,g:.075,d:.16},{f:1175,g:.055,d:.20}],     // 麦克风：两音上行
+ brush:[{f:698,g:.075,d:.16},{f:1046,g:.055,d:.20}]      // 画笔：两音上行（略低）
 };
 function sfxInit(){
  if(SFX.ctx) return SFX.ctx;
@@ -1152,18 +1159,52 @@ function sfxInit(){
   const AC=(typeof window!=="undefined")&&(window.AudioContext||window.webkitAudioContext);
   if(!AC) return null;
   SFX.ctx=new AC();
+  // 两条独立的音量总线：音效一条、音乐一条（关音乐不会把拾取音效也静音）
+  SFX.master=SFX.ctx.createGain();
+  SFX.master.gain.value=1;
+  SFX.master.connect(SFX.ctx.destination);
+  MUSIC.master=SFX.ctx.createGain();
+  MUSIC.master.gain.value=1;
+  MUSIC.master.connect(SFX.ctx.destination);
  }catch(e){ SFX.ctx=null; }
  return SFX.ctx;
 }
 function sfxUnlock(){
- const c=sfxInit();
- if(c&&c.state==="suspended"){ try{ c.resume().catch(()=>{}); }catch(e){} }
+ const c=sfxInit(); if(!c) return;
+ const go=()=>{ try{ musicStart(); }catch(e){} };
+ if(c.state==="suspended"){
+  try{ const pr=c.resume(); if(pr&&pr.then) pr.then(go).catch(()=>{}); else go(); }catch(e){ go(); }
+ }else go();
+}
+/* 风铃：一个清脆的短音（基音 + 轻微高八度泛音），3 毫秒起音、0.22 秒收尾 */
+function chime(f,gain){
+ const c=sfxInit(); if(!c||!SFX.master) return;
+ const t=c.currentTime+0.001;
+ const o=c.createOscillator(), g=c.createGain();
+ o.type="sine"; o.frequency.setValueAtTime(f,t);
+ g.gain.setValueAtTime(0,t);
+ g.gain.linearRampToValueAtTime(gain,t+0.004);
+ g.gain.exponentialRampToValueAtTime(0.0001,t+0.22);
+ o.connect(g); g.connect(SFX.master);
+ o.start(t); o.stop(t+0.24);
+ // 金属感：叠一个很轻的泛音
+ const o2=c.createOscillator(), g2=c.createGain();
+ o2.type="triangle"; o2.frequency.setValueAtTime(f*2.01,t);
+ g2.gain.setValueAtTime(0,t);
+ g2.gain.linearRampToValueAtTime(gain*0.28,t+0.003);
+ g2.gain.exponentialRampToValueAtTime(0.0001,t+0.12);
+ o2.connect(g2); g2.connect(SFX.master);
+ o2.start(t); o2.stop(t+0.14);
 }
 function sfxPick(kind){
  if(!SFX.on) return;
  const c=sfxInit(); if(!c) return;
+ if(kind==="shard"){
+  // 风铃：随机音高，连着拾取自然形成旋律
+  chime(CHIME[(Math.random()*CHIME.length)|0], 0.05);
+  return;
+ }
  if(c.state==="suspended"){
-  // 还没解锁：试着恢复一下，成功后再补一声（不成功就静音，绝不报错）
   try{ const pr=c.resume(); if(pr&&pr.then) pr.then(()=>{ if(c.state==="running") sfxPlay(c,kind); }).catch(()=>{}); }catch(e){}
   return;
  }
@@ -1171,21 +1212,104 @@ function sfxPick(kind){
 }
 function sfxPlay(c,kind){
  const t0=c.currentTime;
- const tones=SFX_TONE[kind]||SFX_TONE.shard;
+ const tones=SFX_TONE[kind]||SFX_TONE.mic;
  try{
   let t=t0;
   for(const tn of tones){
    const o=c.createOscillator(), g=c.createGain();
    o.type="sine";
-   o.frequency.setValueAtTime(tn.f*(kind==="shard"?(0.97+Math.random()*0.06):1),t);
+   o.frequency.setValueAtTime(tn.f,t);
    g.gain.setValueAtTime(0,t);
-   g.gain.linearRampToValueAtTime(tn.g,t+0.012);
+   g.gain.linearRampToValueAtTime(tn.g,t+0.010);
    g.gain.exponentialRampToValueAtTime(0.0001,t+tn.d);
-   o.connect(g); g.connect(c.destination);
+   o.connect(g); g.connect(SFX.master||c.destination);
    o.start(t); o.stop(t+tn.d+0.02);
    t+=tn.d*0.55;
   }
  }catch(e){}
+}
+/* ============================================================
+   背景音乐：一段 8 秒的循环小曲（五声音阶钟琴 + 低音铺底）
+   —— 轻松、简单、不抢戏；暂停时自动淡出
+   ============================================================ */
+const MUSIC={
+ on:true, playing:false, timer:0, nextT:0, step:0,
+ stepSec:0.52,               // 每步 0.52 秒（约 115 BPM 的八分音符，慢悠悠）
+ vol:1.0,                    // 音乐总音量（改这一个数就能整体调大小）
+ master:null
+};
+const MUSIC_SCALE=[523.25,587.33,659.25,783.99,880.00,1046.50];   // C5 D5 E5 G5 A5 C6（C 大调五声）
+const MUSIC_MELODY=[0,-1,4,-1, 2,-1,3,-1, 1,-1,5,3, 2,-1,0,-1];  // -1 = 休止，留白多一点更轻松
+const MUSIC_PAD=[130.81,196.00];                                  // C3 + G3 长音铺底
+function musicNode(f,t,dur,gain,type){
+ const c=SFX.ctx; if(!c) return;
+ const o=c.createOscillator(), g=c.createGain();
+ o.type=type||"sine";
+ o.frequency.setValueAtTime(f,t);
+ g.gain.setValueAtTime(0,t);
+ g.gain.linearRampToValueAtTime(gain*(MUSIC.vol||1),t+0.02);
+ g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+ o.connect(g); g.connect(MUSIC.master||SFX.master||c.destination);
+ o.start(t); o.stop(t+dur+0.05);
+}
+function musicSchedule(){
+ const c=SFX.ctx; if(!c||!MUSIC.playing) return;
+ const now=c.currentTime;
+ if(!(MUSIC.nextT>now-2)) MUSIC.nextT=now+0.05;      // 被挂起过（currentTime 回退）就重新对齐
+ while(MUSIC.nextT<now+0.9){
+  const i=MUSIC.step%MUSIC_MELODY.length;
+  const v=MUSIC_MELODY[i];
+  if(v>=0){
+   musicNode(MUSIC_SCALE[v],MUSIC.nextT,0.85,0.070,"sine");        // 钟琴
+   musicNode(MUSIC_SCALE[v]*2,MUSIC.nextT,0.40,0.018,"sine");      // 高八度泛音，更通透
+  }
+  if(i%8===0){
+   musicNode(MUSIC_PAD[0],MUSIC.nextT,3.8,0.030,"sine");           // 低音铺底
+   musicNode(MUSIC_PAD[1],MUSIC.nextT,3.8,0.020,"sine");
+  }
+  MUSIC.nextT+=MUSIC.stepSec;
+  MUSIC.step++;
+ }
+}
+function musicLoop(){
+ if(!MUSIC.playing) return;
+ try{ musicSchedule(); }catch(e){}
+ MUSIC.timer=setTimeout(musicLoop,200);
+}
+function musicStart(){
+ if(MUSIC.playing||!MUSIC.on) return;
+ const c=sfxInit(); if(!c) return;
+ MUSIC.playing=true; MUSIC.nextT=c.currentTime+0.08; MUSIC.step=0;
+ if(MUSIC.master){
+  try{
+   const t=c.currentTime;
+   MUSIC.master.gain.cancelScheduledValues(t);
+   MUSIC.master.gain.setValueAtTime(MUSIC.master.gain.value,t);
+   MUSIC.master.gain.linearRampToValueAtTime(1,t+0.6);          // 淡入
+  }catch(e){}
+ }
+ musicLoop();
+}
+function musicStop(fade){
+ if(!MUSIC.playing) return;
+ MUSIC.playing=false;
+ if(MUSIC.timer){ clearTimeout(MUSIC.timer); MUSIC.timer=0; }
+ const c=SFX.ctx;
+ if(c&&MUSIC.master){
+  try{
+   const t=c.currentTime;
+   MUSIC.master.gain.cancelScheduledValues(t);
+   MUSIC.master.gain.setValueAtTime(MUSIC.master.gain.value,t);
+   MUSIC.master.gain.linearRampToValueAtTime(0.0001,t+(fade||0.35));
+  }catch(e){}
+ }
+}
+function musicToggle(){
+ MUSIC.on=!MUSIC.on;
+ if(!MUSIC.on) musicStop(0.25);
+ else if(!paused) musicStart();
+ const b=document.getElementById("music");
+ if(b){ b.textContent=MUSIC.on?"♪ 音乐":"♪ 静音"; b.classList.toggle("off",!MUSIC.on); }
 }
 /* —— 拾取反馈：以仙灵为圆心的收缩圆（从外往内收，收到中心后散掉）—— */
 function pushRing(color,strong){
@@ -1726,7 +1850,7 @@ function moveEnts(dd,collide){
  compact(ents,o=>o.kind==="gate"||(o.x>-140&&!o.got));
 }
 // 触碰结界 → 先来 2 秒慢放（世界与角色一起减速），再弹出选择
-const GATE_SLOW_SEC=2.0;     // 慢放时长（真实时间，秒）
+const GATE_SLOW_SEC=0.5;     // 慢放时长（真实时间，秒）—— 只做一个很短的"顿一下"
 const GATE_SLOW_SCALE=0.34;  // 慢放倍速：0.34 = 约三分之一速
 function onGateTouch(){
  if(gateTouched) return;
@@ -2207,9 +2331,12 @@ function softChange(){
    12. 主循环
    ============================================================ */
 let errCount=0;
-// 调试用：控制台里 __SFX() 能看到音效状态（suspended 说明还没被用户手势解锁，属正常）
+// 调试用：控制台里 __SFX() 能看到音效/音乐状态
 try{
- window.__SFX=()=>({on:SFX.on, state:SFX.ctx?SFX.ctx.state:"none", sampleRate:SFX.ctx?SFX.ctx.sampleRate:null});
+ window.__SFX=()=>({on:SFX.on, state:SFX.ctx?SFX.ctx.state:"none", sampleRate:SFX.ctx?SFX.ctx.sampleRate:null,
+  sfxGain:SFX.master?+SFX.master.gain.value.toFixed(3):null,
+  musicGain:MUSIC.master?+MUSIC.master.gain.value.toFixed(3):null,
+  music:{on:MUSIC.on,playing:MUSIC.playing,step:MUSIC.step,vol:MUSIC.vol}});
 }catch(e){}
 function startLoop(){
  if(loopOn) return;
@@ -2405,10 +2532,13 @@ function enterEndlessNow(){
 function pause(){
  if(!playing()||paused) return;
  paused=true; $("pauseScreen").style.display="flex";
-}function resume(){
+ musicStop(0.3);                       // 暂停时音乐淡出
+}
+function resume(){
  if(!paused) return;
  paused=false; $("pauseScreen").style.display="none";
  lastT=performance.now();
+ musicStart();                         // 继续时音乐淡入
 }
 
 // —— 输入：按下瞬间起跳（不等松开）；松手决定小跳/大跳 ——
@@ -2481,7 +2611,12 @@ document.addEventListener("visibilitychange",()=>{
 });
 window.addEventListener("blur",()=>{ if(playing()&&!paused) pause(); });
 
-$("begin").onclick=e=>{ e.currentTarget.blur(); startGame(); };$("skipToRun").onclick=e=>{ e.currentTarget.blur(); enterEndlessNow(); };
+$("begin").onclick=e=>{ e.currentTarget.blur(); sfxUnlock(); startGame(); };
+// 背景音乐开关（放在顶部栏，随时可关）
+(function(){
+ const b=document.getElementById("music");
+ if(b) b.addEventListener("click",e=>{ e.stopPropagation(); if(e.currentTarget.blur) e.currentTarget.blur(); sfxUnlock(); musicToggle(); });
+})();$("skipToRun").onclick=e=>{ e.currentTarget.blur(); enterEndlessNow(); };
 $("storyNext").onclick=continueFromStoryCard;
 $("pause").onclick=pause;
 $("resume").onclick=resume;
