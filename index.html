@@ -2749,24 +2749,33 @@ function buildShareCard(){
  // 外框
  g.strokeStyle=hex(accent,.55); g.lineWidth=6; g.strokeRect(3,3,CW-6,CH-6);
 
- // —— 立绘 ——
+ // —— 立绘（尽量放大：几乎占满左侧整块，只留 10px 边距）——
  const av=(document.querySelector?document.querySelector("#avatar img"):null);
- let drew=false;
+ let drew=false, avBox=null;
+ const AV_TOP=24, AV_MAX_H=412;                 // 立绘区：y 24~436，下面 468 才是类型文字
  if(av&&av.complete&&av.naturalWidth>0){
   try{
-   const maxW=LW-80, maxH=360;
-   const s=Math.min(maxW/av.naturalWidth, maxH/av.naturalHeight);
-   const w=Math.round(av.naturalWidth*s), h=Math.round(av.naturalHeight*s);
-   g.drawImage(av,Math.round((LW-w)/2),Math.round(56+(maxH-h)/2),w,h);
+   // 立绘图片四周有 7%~13% 的透明留白，先按不透明包围盒裁掉，再把内容放大填满左侧版面
+   const tr=artTrim(av);
+   const iw=av.naturalWidth, ih=av.naturalHeight;
+   const sx=tr?Math.round(tr.x*iw):0, sy=tr?Math.round(tr.y*ih):0;
+   const sw=tr?Math.round(tr.w*iw):iw, sh=tr?Math.round(tr.h*ih):ih;
+   const maxW=LW-24;
+   const s=Math.min(maxW/sw, AV_MAX_H/sh);
+   const w=Math.round(sw*s), h=Math.round(sh*s);
+   const dx=Math.round((LW-w)/2), dy=Math.round(AV_TOP+(AV_MAX_H-h)/2);
+   g.drawImage(av,sx,sy,sw,sh,dx,dy,w,h);
+   avBox={x:dx,y:dy,w:w,h:h,trimmed:!!tr};
    drew=true;
   }catch(e){ drew=false; }
  }
  if(!drew){
   g.save();
   g.textAlign="center"; g.textBaseline="middle";
-  g.font="900 150px "+F; g.fillStyle=accent;
+  g.font="900 210px "+F; g.fillStyle=accent;
   g.fillText(t.emoji||"✦",LW/2,230);
   g.restore();
+  avBox={x:LW/2-105,y:230-105,w:210,h:210};
  }
  g.textAlign="center"; g.textBaseline="alphabetic";
  g.fillStyle=accent; g.font="900 15px "+F;
@@ -2829,6 +2838,7 @@ function buildShareCard(){
  g.textAlign="left";
  return {cv,name:"创想大师-"+t.name+".png",
   layout:{scoreBox:{x:RX,y:by,w:RW,h:bh},
+   avatar:avBox,
    typeName:t.name, descLen:(t.desc||"").length,
    descLines:dl.length,
    descBottom:by+164+Math.max(0,dl.length-1)*24,
