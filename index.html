@@ -2752,26 +2752,24 @@ function cardTrim(src){
 function cardAvatarCanvas(){
  const key=String($("typeEnglish").textContent||"").toLowerCase();
  let src=null, rect=null, from="";
- // ① 拼图（Loading 屏就下好了，最可靠）
- if(ART.atlas&&ART.atlas.naturalWidth>0){
+ // ① 结算页里那张（玩家看到的就是它，最优先）
+ const dom=(document.querySelector?document.querySelector("#avatar img"):null);
+ if(dom&&dom.complete&&dom.naturalWidth>0){
+  src=dom; rect={x:0,y:0,w:dom.naturalWidth,h:dom.naturalHeight}; from="dom";
+ }
+ // ② 拼图（Loading 屏就下好了）
+ if(!src&&ART.atlas&&ART.atlas.naturalWidth>0){
   const i=AVATAR_ATLAS_ORDER.indexOf(key);
   if(i>=0){
    const tw=ART.atlas.naturalWidth/AVATAR_ATLAS_ORDER.length;
    src=ART.atlas; rect={x:i*tw,y:0,w:tw,h:ART.atlas.naturalHeight}; from="atlas";
   }
  }
- // ② 预取的单张图
+ // ③ 预取的单张图（或卡片自己现下的那张）
  if(!src){
   const pre=ART.avatarEl[key];
   if(pre&&pre.complete&&pre.naturalWidth>0){
    src=pre; rect={x:0,y:0,w:pre.naturalWidth,h:pre.naturalHeight}; from="prefetch";
-  }
- }
- // ③ 结算页里那张 <img>（可能还没插进来）
- if(!src){
-  const dom=(document.querySelector?document.querySelector("#avatar img"):null);
-  if(dom&&dom.complete&&dom.naturalWidth>0){
-   src=dom; rect={x:0,y:0,w:dom.naturalWidth,h:dom.naturalHeight}; from="dom";
   }
  }
  if(!src) return null;
@@ -2934,6 +2932,34 @@ function triggerDownload(url,name){
   return true;
  }catch(e){ return false; }
 }
+/* 出图前确保立绘就绪：优先级已经在 cardAvatarCanvas 里了，这里负责"实在没有就现下一张"。
+   等图最多 6 秒（单张约 65KB，比整张拼图 219KB 小得多），等不到才退回 emoji。 */
+function ensureCardAvatar(cb){
+ let done=false;
+ const finish=()=>{ if(done) return; done=true; cb(); };
+ const key=String($("typeEnglish").textContent||"").toLowerCase();
+ const ready=()=>{
+  const dom=(document.querySelector?document.querySelector("#avatar img"):null);
+  if(dom&&dom.complete&&dom.naturalWidth>0) return true;
+  if(ART.atlas&&ART.atlas.naturalWidth>0&&AVATAR_ATLAS_ORDER.indexOf(key)>=0) return true;
+  const pre=ART.avatarEl[key];
+  return !!(pre&&pre.complete&&pre.naturalWidth>0);
+ };
+ if(ready()) return finish();
+ const cands=avatarCands(key);
+ let ci=0;
+ const next=()=>{
+  if(ci>=cands.length) return finish();
+  const im=new Image();
+  try{ ART.warm.push(im); }catch(e){}
+  im.onload=()=>{ if(im.naturalWidth>0){ ART.avatarEl[key]=im; finish(); } else next(); };
+  im.onerror=next;
+  try{ im.src=artURL(cands[ci++]); }catch(e){ next(); }
+ };
+ next();
+ // 双保险：6 秒还没好就按现状出图（一般是 emoji），至少不卡住玩家
+ setTimeout(finish,6000);
+}
 function saveCardImage(){
  const btn=$("saveCard");
  const old=btn?btn.textContent:"";
@@ -2974,19 +3000,13 @@ function saveCardImage(){
  };
  let built=null;
  try{ built=buildShareCard(); }catch(e){ built=null; }
- // 立绘万一还没就绪，先等一下（最多约 1.6 秒）再出图，别把 emoji（比如 🚀）画进去
+ // 立绘还没就绪就别急着出图（否则会把 emoji 画进去）：先等/现下一张，最多 6 秒
  if(built&&!built.hasAvatar){
-  let tries=0;
-  const tick=()=>{
-   tries++;
+  ensureCardAvatar(()=>{
    let again=null;
    try{ again=buildShareCard(); }catch(e){ again=null; }
-   if(again) built=again;
-   if(built&&built.hasAvatar){ deliver(built); return; }
-   if(tries<8) setTimeout(tick,200);
-   else deliver(built);
-  };
-  setTimeout(tick,120);
+   deliver(again||built);
+  });
   return;
  }
  deliver(built);
