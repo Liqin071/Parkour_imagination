@@ -123,21 +123,6 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 .bootbar b{display:block;height:100%;width:0%;border-radius:9px;background:linear-gradient(90deg,#9fffd0,#ffd58b);box-shadow:0 0 12px #9fffd0aa;transition:width .32s ease}
 .boottip{font-size:11px;letter-spacing:.14em;color:#8fa4c0;min-height:15px}
 /* —— 竖屏提示：手机竖着拿时盖住全屏，提示转横屏（纯 CSS 控制，转过来立刻消失） —— */
-/* —— 竖屏提示：只提示 3 秒，之后自动让开 ——
-   为什么不强制等横过来：微信里点链接打开的小游戏窗口往往锁定方向，
-   手机根本转不了横屏，卡在这里就等于玩不了。所以提示只是"提醒一下"。 */
-#rotate{position:fixed;inset:0;z-index:9500;display:none;place-items:center;
- background:radial-gradient(ellipse at 50% 32%,#283b5d,#11152b 62%,#090d1d);text-align:center;padding:24px;
- opacity:0;transition:opacity .28s ease}
-#rotate.show{display:grid;opacity:1}
-#rotate.hide{opacity:0;pointer-events:none}
-#rotate .rbox{width:min(320px,84vw)}
-#rotate .ricon{width:104px;height:74px;margin:0 auto 18px;border:3px solid #9fffd0;border-radius:12px;position:relative;
- box-shadow:0 0 26px #9fffd066;animation:rot 1.9s ease-in-out infinite}
-#rotate .ricon:after{content:"";position:absolute;left:50%;bottom:6px;width:16px;height:3px;margin-left:-8px;border-radius:3px;background:#9fffd0aa}
-@keyframes rot{0%,40%{transform:rotate(-90deg) scale(.86)}60%,100%{transform:rotate(0deg) scale(1)}}
-#rotate .rtit{font-size:17px;font-weight:1000;letter-spacing:.14em;color:#eafff8;text-shadow:0 0 20px #9fffd055}
-#rotate .rsub{font-size:12px;line-height:1.8;color:#9fb3cc;margin-top:10px}
 /* —— 横屏（手机横过来后高度很矮）的紧凑布局 —— */
 @media (max-height:560px) and (orientation:landscape){
  .screen{padding:44px 16px 10px}
@@ -189,11 +174,6 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
  <div class="bootname">创想<span>大师</span></div>
  <div class="bootbar"><b id="bootFill"></b></div>
  <div class="boottip" id="bootTip">正在唤醒灵感世界…</div>
-</div></div>
-<div id="rotate"><div class="rbox">
- <div class="ricon"></div>
- <div class="rtit">建议把手机转为横屏</div>
- <div class="rsub">横屏能看到完整画面。<br><span style="color:#9fffd0">3 秒后自动继续</span>，也可以点一下直接关掉。</div>
 </div></div>
 <div id="app">
 <canvas id="world"></canvas>
@@ -539,34 +519,6 @@ function warmSprites(){
    ============================================================ */
 let gcache={sky:[],glow:[],ground:[],vign:null,cover:null};
 let starPaths=[];
-/* —— 竖屏提示：显示 3 秒后自动消失，点一下也能立刻关 —— */
-const ROTATE_MS=3000;
-let rotTimer=0, rotShown=false, rotPaused=false;
-function isPortraitPhone(){
- try{
-  return !!(window.matchMedia&&window.matchMedia("(orientation:portrait) and (max-width:900px)").matches);
- }catch(e){ return false; }
-}
-function showRotateHint(){
- if(rotShown) return; rotShown=true;
- const el=document.getElementById("rotate");
- if(el){ el.classList.add("show"); el.classList.remove("hide"); }
- // 提示期间先暂停，免得在遮挡画面时掉血；提示消失后自动继续
- rotPaused=false;
- if(playing()&&!paused){ pause(); rotPaused=true; }
- clearTimeout(rotTimer);
- rotTimer=setTimeout(hideRotateHint,ROTATE_MS);
-}
-function hideRotateHint(){
- if(!rotShown) return; rotShown=false;
- const el=document.getElementById("rotate");
- if(el){
-  el.classList.add("hide");
-  setTimeout(()=>{ try{ el.classList.remove("show"); el.classList.remove("hide"); }catch(e){} },320);
- }
- clearTimeout(rotTimer);
- if(rotPaused){ rotPaused=false; if(paused) resume(); }
-}
 function resize(){
  dpr=Math.min(window.devicePixelRatio||1,2);
  W=Math.max(320,window.innerWidth); H=Math.max(320,window.innerHeight);
@@ -574,8 +526,6 @@ function resize(){
  cv.style.width=W+"px"; cv.style.height=H+"px";
  ctx.setTransform(dpr,0,0,dpr,0,0);
  gcache={sky:[],glow:[],ground:[],vign:null,cover:null};
- // 手机竖着拿：给 3 秒提示（不强制等横屏，微信里可能根本转不了）
- if(isPortraitPhone()) showRotateHint();
  buildStars(); warmSprites();
  draw();
 }
@@ -2700,11 +2650,6 @@ $("app").addEventListener("pointerdown",e=>{
 });
 // 松手（任意位置）都能结束长按 → 小跳
 window.addEventListener("pointerup",()=>releaseJump());
-// 竖屏提示：点一下立刻关掉（不用等那 3 秒）
-(function(){
- const r=document.getElementById("rotate");
- if(r) r.addEventListener("pointerdown",e=>{ if(e&&e.preventDefault) e.preventDefault(); hideRotateHint(); });
-})();
 window.addEventListener("pointercancel",()=>releaseJump());
 window.addEventListener("blur",()=>releaseJump());
 // 首次交互解锁音频（手机浏览器/微信里必须由用户手势触发）
