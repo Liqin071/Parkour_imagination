@@ -59,6 +59,15 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 .scorebig{font-size:33px;color:var(--accent);font-weight:1000}.meter{height:7px;background:#e9eaf0;border-radius:9px;overflow:hidden;margin-top:8px}.meter i{display:block;height:100%;background:var(--accent);width:0;transition:width .5s}
 .mini-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:11px 0}.mini{padding:8px 4px;border-radius:10px;background:#f3f5f9;text-align:center}.mini b{display:block;font-size:19px;color:var(--accent)}.mini span{font-size:10px;color:#738098}
 .result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.result-actions button{flex:1;min-width:112px}
+/* 人格卡图片预览层（盖在结算页之上） */
+#cardPreview{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;
+ background:#080d1ceb;backdrop-filter:blur(10px);padding:16px;overflow:auto}
+#cardPreview.show{display:flex}
+#cardPreview .cpbox{width:min(780px,100%);display:flex;flex-direction:column;align-items:center;gap:10px;margin:auto}
+#cardPreview #cardImg{width:100%;height:auto;display:block;border-radius:12px;background:#fff;box-shadow:0 18px 50px #000a;touch-action:manipulation}
+#cardPreview .cptip{font-size:12px;color:#c9d8ea;text-align:center;line-height:1.7}
+#cardPreview .cpactions{display:flex;gap:10px;width:100%}
+#cardPreview .cpactions button{flex:1}
 @media(max-width:680px){
  .result-card{grid-template-columns:minmax(118px,40%) 1fr;border-radius:16px;max-height:calc(100dvh - 72px)}
  .rc-figure{padding:10px 8px;gap:6px}
@@ -216,12 +225,20 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
    <div class="avatar" id="avatar">🧚</div>
    <div class="rc-figure-tag"><small>YOUR INSPIRATION TYPE</small><b id="typeEnglish">CREATOR</b></div>
   </div>
-  <div class="rc-body" id="resultPanel"><div class="eyebrow">INSPIRATION ARCHIVE / 001</div><h2 id="typeName">凯瑞特</h2><p id="typeQuote"></p><div class="scorebox"><div class="eyebrow">灵感共鸣指数</div><div class="scorebig" id="typeScore">92</div><p id="typeDesc"></p><div class="meter"><i id="meterFill"></i></div></div><div class="mini-stats"><div class="mini"><b id="finalScore">0</b><span>跑酷积分</span></div><div class="mini"><b id="finalShard">0</b><span>灵感碎片</span></div><div class="mini"><b id="finalSpecial">0</b><span>特殊灵感</span></div><div class="mini"><b id="finalDist">0</b><span>探索距离(m)</span></div></div><p id="typeAdvice"></p><div class="result-actions"><button class="primary" id="playAgain">再次出发</button><button class="secondary" id="share">复制人格卡</button></div></div>
+  <div class="rc-body" id="resultPanel"><div class="eyebrow">INSPIRATION ARCHIVE / 001</div><h2 id="typeName">凯瑞特</h2><p id="typeQuote"></p><div class="scorebox"><div class="eyebrow">灵感共鸣指数</div><div class="scorebig" id="typeScore">92</div><p id="typeDesc"></p><div class="meter"><i id="meterFill"></i></div></div><div class="mini-stats"><div class="mini"><b id="finalScore">0</b><span>跑酷积分</span></div><div class="mini"><b id="finalShard">0</b><span>灵感碎片</span></div><div class="mini"><b id="finalSpecial">0</b><span>特殊灵感</span></div><div class="mini"><b id="finalDist">0</b><span>探索距离(m)</span></div></div><p id="typeAdvice"></p><div class="result-actions"><button class="primary" id="playAgain">再次出发</button><button class="primary" id="saveCard" style="background:linear-gradient(100deg,#ffd58b,#ff9acb)">保存人格卡图片</button><button class="secondary" id="share">复制文案</button></div></div>
  </div>
 </section>
 
 <div id="narrative"><div class="nhead" id="narrativeHead"></div><div class="nbody" id="narrativeBody"></div><div class="nquote" id="narrativeQuote"></div><div class="ncount" id="narrativeCount"></div></div>
-<div id="storyBanner" style="display:none;position:absolute;z-index:3;top:calc(env(safe-area-inset-top) + 54px);left:18px;right:18px;height:4px;border-radius:9px;background:#ffffff20;overflow:hidden;pointer-events:none"><i id="storyProgress" style="display:block;width:0;height:100%;background:linear-gradient(90deg,#9fffd0,#ffd58b);box-shadow:0 0 12px #9fffd0"></i></div>
+<!-- 人格卡图片预览（手机端长按保存用；电脑端直接下载） -->
+<div id="cardPreview"><div class="cpbox">
+ <img id="cardImg" alt="人格卡">
+ <div class="cptip" id="cardTip">长按图片可保存到相册</div>
+ <div class="cpactions">
+  <button class="primary" id="cardDownload">下载图片</button>
+  <button class="secondary" id="cardClose">关闭</button>
+ </div>
+</div></div><div id="storyBanner" style="display:none;position:absolute;z-index:3;top:calc(env(safe-area-inset-top) + 54px);left:18px;right:18px;height:4px;border-radius:9px;background:#ffffff20;overflow:hidden;pointer-events:none"><i id="storyProgress" style="display:block;width:0;height:100%;background:linear-gradient(90deg,#9fffd0,#ffd58b);box-shadow:0 0 12px #9fffd0"></i></div>
 <div id="hud"><div class="stats"><div class="stat">积分<b id="score">0</b></div><div class="stat">✧<b id="shards">0</b></div><div class="stat">🎤<b id="mics">0</b></div><div class="stat">🖌️<b id="brushes">0</b></div><div class="stat">距离<b id="dist">0</b>m</div></div><div class="hearts" id="hearts">♥ ♥ ♥</div></div>
 <button id="pause">Ⅱ 暂停</button><button id="jump">跳跃 ×2</button><button id="end">结束 · 结算</button><div id="toast"></div>
 <div id="windup"><div class="wring"></div><div class="wtext" id="wtext">灵感共鸣即将发生</div><div class="wsub" id="wsub">准备好你的选择</div></div>
@@ -2685,6 +2702,193 @@ $("resume").onclick=resume;
 $("end").onclick=requestEnd;
 $("endFromPause").onclick=()=>{ resume(); requestEnd(); };
 $("restart").onclick=restart;
+/* ============================================================
+   人格卡图片：1200×630（电脑端分享图的横幅比例），画完可下载/长按保存
+   ============================================================ */
+function wrapLeft(g,text,maxW,maxLines){
+ const lines=[]; let line="";
+ for(let i=0;i<text.length;i++){
+  const ch=text[i], test=line+ch;
+  if(g.measureText(test).width>maxW&&line){ lines.push(line); line=ch; }
+  else line=test;
+ }
+ if(line) lines.push(line);
+ if(maxLines&&lines.length>maxLines){ lines.length=maxLines; lines[maxLines-1]=lines[maxLines-1].replace(/.$/,"…"); }
+ return lines;
+}
+function buildShareCard(){
+ const CW=1200, CH=630;
+ const cv=document.createElement("canvas");
+ cv.width=CW; cv.height=CH;
+ const g=cv.getContext("2d");
+ const t=archetypes.find(a=>a.en===$("typeEnglish").textContent)||archetypes[0];
+ const accent=t.color||"#8d8af4";
+ const rate=parseInt($("typeScore").textContent,10)||0;
+ const F="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif";
+
+ // —— 底 ——
+ let bg=g.createLinearGradient(0,0,CW,CH);
+ bg.addColorStop(0,"#ffffff"); bg.addColorStop(1,"#eef3ff");
+ g.fillStyle=bg; g.fillRect(0,0,CW,CH);
+ // 左侧人物版块
+ const LW=420;
+ let lg=g.createLinearGradient(0,0,LW,CH);
+ lg.addColorStop(0,"#ffffff"); lg.addColorStop(1,"#e9efff");
+ g.fillStyle=lg; g.fillRect(0,0,LW,CH);
+ g.strokeStyle=hex(accent,.28); g.lineWidth=2;
+ g.beginPath(); g.moveTo(LW,0); g.lineTo(LW,CH); g.stroke();
+ // 外框
+ g.strokeStyle=hex(accent,.55); g.lineWidth=6; g.strokeRect(3,3,CW-6,CH-6);
+
+ // —— 立绘 ——
+ const av=(document.querySelector?document.querySelector("#avatar img"):null);
+ let drew=false;
+ if(av&&av.complete&&av.naturalWidth>0){
+  try{
+   const maxW=LW-80, maxH=360;
+   const s=Math.min(maxW/av.naturalWidth, maxH/av.naturalHeight);
+   const w=Math.round(av.naturalWidth*s), h=Math.round(av.naturalHeight*s);
+   g.drawImage(av,Math.round((LW-w)/2),Math.round(56+(maxH-h)/2),w,h);
+   drew=true;
+  }catch(e){ drew=false; }
+ }
+ if(!drew){
+  g.save();
+  g.textAlign="center"; g.textBaseline="middle";
+  g.font="900 150px "+F; g.fillStyle=accent;
+  g.fillText(t.emoji||"✦",LW/2,230);
+  g.restore();
+ }
+ g.textAlign="center"; g.textBaseline="alphabetic";
+ g.fillStyle=accent; g.font="900 15px "+F;
+ g.fillText("YOUR INSPIRATION TYPE",LW/2,468);
+ g.fillStyle="#25314a"; g.font="900 30px "+F;
+ g.fillText(t.en,LW/2,508);
+
+ // —— 右侧文字区 ——
+ const RX=LW+64, RW=CW-RX-58;
+ g.textAlign="left";
+ g.fillStyle=hex(accent,.95); g.font="900 16px "+F;
+ g.fillText("INSPIRATION ARCHIVE / 001",RX,86);
+ g.fillStyle=accent; g.font="900 60px "+F;
+ g.fillText(t.name,RX,154);
+ g.fillStyle="#44506b"; g.font="500 21px "+F;
+ const ql=wrapLeft(g,"「"+(t.quote||"")+"」",RW,2);
+ ql.forEach((ln,i)=>g.fillText(ln,RX,196+i*31));
+
+ // 共鸣指数卡片
+ const by=252, bh=150;
+ g.fillStyle=hex(accent,.09); rr(g,RX,by,RW,bh,18); g.fill();
+ g.strokeStyle=hex(accent,.32); g.lineWidth=2; rr(g,RX,by,RW,bh,18); g.stroke();
+ g.fillStyle=hex(accent,.95); g.font="900 15px "+F;
+ g.fillText("灵感共鸣指数",RX+24,by+34);
+ g.fillStyle=accent; g.font="900 72px "+F;
+ g.fillText(String(rate),RX+22,by+110);
+ // 进度条
+ const mx=RX+24+(rate>=100?190:150), mw=RX+RW-24-mx, my=by+96;
+ g.fillStyle="#e6eaf5"; rr(g,mx,my,mw,9,5); g.fill();
+ g.fillStyle=accent; rr(g,mx,my,Math.max(6,mw*rate/100),9,5); g.fill();
+ // 简介
+ g.fillStyle="#5a6785"; g.font="500 16px "+F;
+ const dl=wrapLeft(g,t.desc||"",RW-40,2);
+ dl.forEach((ln,i)=>g.fillText(ln,RX+24,by+136+i*22));
+
+ // 四个数据格
+ const sy=424, sh=78, gap=12, sw=(RW-gap*3)/4;
+ const stats=[[String(score),"跑酷积分"],[String(shards),"灵感碎片"],
+  [String(mics+brushes),"特殊灵感"],[Math.round(dist/10)+"m","探索距离"]];
+ stats.forEach((it,i)=>{
+  const x=RX+i*(sw+gap);
+  g.fillStyle="#f4f6fb"; rr(g,x,sy,sw,sh,12); g.fill();
+  g.textAlign="center";
+  g.fillStyle=accent; g.font="900 30px "+F;
+  g.fillText(it[0],x+sw/2,sy+42);
+  g.fillStyle="#7b879f"; g.font="700 13px "+F;
+  g.fillText(it[1],x+sw/2,sy+64);
+ });
+ g.textAlign="left";
+ // 创作建议
+ g.fillStyle="#44506b"; g.font="600 16px "+F;
+ const al=wrapLeft(g,"创作建议："+(t.advice||""),RW,1);
+ if(al.length) g.fillText(al[0],RX,sy+sh+34);
+
+ // —— 页脚 ——
+ g.fillStyle=hex(accent,.95); g.font="900 20px "+F;
+ g.fillText(gameUrl(),RX,CH-30);
+ g.textAlign="right";
+ g.fillStyle="#93a0b8"; g.font="700 15px "+F;
+ g.fillText("创想大师｜灵感世界修复计划",CW-58,CH-30);
+ g.textAlign="left";
+ return {cv,name:"创想大师-"+t.name+".png"};
+}
+const cardState={url:"",name:""};
+function showCardPreview(url,name){
+ cardState.url=url; cardState.name=name;
+ const img=$("cardImg");
+ if(img) img.src=url;
+ const tip=$("cardTip");
+ const touch=/Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent||"");
+ if(tip) tip.textContent=touch?"长按图片 → 保存到相册":"点下方按钮下载，或右键图片另存为";
+ const p=$("cardPreview");
+ if(p) p.classList.add("show");
+}
+function hideCardPreview(){
+ const p=$("cardPreview");
+ if(p) p.classList.remove("show");
+}
+function triggerDownload(url,name){
+ try{
+  const a=document.createElement("a");
+  a.href=url; a.download=name||"创想大师-人格卡.png";
+  a.rel="noopener";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ try{ a.remove(); }catch(e){} },0);
+  return true;
+ }catch(e){ return false; }
+}
+function saveCardImage(){
+ const btn=$("saveCard");
+ const old=btn?btn.textContent:"";
+ if(btn) btn.textContent="生成中…";
+ const done=(url,name,alsoPreview)=>{
+  if(btn) btn.textContent="已生成 ✓";
+  setTimeout(()=>{ if(btn) btn.textContent=old; },1600);
+  if(alsoPreview) showCardPreview(url,name);
+  else toast("人格卡图片已下载");
+ };
+ let built=null;
+ try{ built=buildShareCard(); }catch(e){ built=null; }
+ if(!built){
+  if(btn) btn.textContent=old;
+  toast("生成图片失败，可以改用「复制文案」");
+  return;
+ }
+ const touch=/Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent||"");
+ const fallbackDataURL=()=>{
+  let data="";
+  try{ data=built.cv.toDataURL("image/png"); }catch(e){ data=""; }
+  if(!data){ if(btn) btn.textContent=old; toast("这台设备的浏览器不支持导出图片"); return; }
+  if(touch){ done(data,built.name,true); }
+  else{ triggerDownload(data,built.name); done(data,built.name,false); }
+ };
+ try{
+  if(built.cv.toBlob){
+   built.cv.toBlob(blob=>{
+    if(!blob){ fallbackDataURL(); return; }
+    let url="";
+    try{ url=URL.createObjectURL(blob); }catch(e){ fallbackDataURL(); return; }
+    if(touch){
+     // 手机上微信/浏览器多数禁止自动下载，直接给预览让玩家长按保存
+     done(url,built.name,true);
+    }else{
+     const ok=triggerDownload(url,built.name);
+     done(url,built.name,!ok);
+    }
+    setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} },60000);
+   },"image/png");
+  }else fallbackDataURL();
+ }catch(e){ fallbackDataURL(); }
+}
 $("playAgain").onclick=restart;
 // —— 复制人格卡：climboard → execCommand 兜底 → 弹窗手动复制；按钮上给可见反馈 ——
 function legacyCopy(text){
@@ -2741,6 +2945,41 @@ $("share").onclick=()=>{
   setTimeout(()=>{btn.textContent=old},1800);
  });
 };
+// 保存人格卡图片（生成 1200×630；手机给预览长按保存，电脑直接下载）
+$("saveCard").onclick=e=>{ if(e&&e.currentTarget&&e.currentTarget.blur) e.currentTarget.blur(); saveCardImage(); };
+$("cardClose").onclick=hideCardPreview;
+$("cardDownload").onclick=()=>{
+ if(!cardState.url) return;
+ const ok=triggerDownload(cardState.url,cardState.name);
+ toast(ok?"已开始下载":"长按图片保存到相册");
+};
+// 调试用：控制台里 __CARD() 能看到生成卡片的尺寸与数据大小；__CARD_IMG() 拿到 PNG dataURL
+try{
+ window.__CARD=()=>{
+  const r=buildShareCard();
+  let len=0;
+  try{ len=r.cv.toDataURL("image/png").length; }catch(e){ len=-1; }
+  return {w:r.cv.width,h:r.cv.height,name:r.name,dataURLChars:len};
+ };
+ window.__CARD_IMG=()=>buildShareCard().cv.toDataURL("image/png");
+ // 像素统计：确认卡片不是空白（有文字、左侧有人物）
+ window.__CARD_STATS=()=>{
+  const r=buildShareCard(), cv=r.cv, g=cv.getContext("2d");
+  let d;
+  try{ d=g.getImageData(0,0,cv.width,cv.height).data; }catch(e){ return {err:e.message}; }
+  let sum=0,dark=0,leftInk=0,rightInk=0;
+  for(let y=0;y<cv.height;y++){
+   for(let x=0;x<cv.width;x++){
+    const i=(y*cv.width+x)*4;
+    const lum=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
+    sum+=lum;
+    if(lum<140){ dark++; if(x<420) leftInk++; else rightInk++; }
+   }
+  }
+  const n=cv.width*cv.height;
+  return { w:cv.width, h:cv.height, meanLum:Math.round(sum/n), darkPixels:dark, leftInk, rightInk };
+ };
+}catch(e){}
 
 window.addEventListener("resize",resize);
 
