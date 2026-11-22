@@ -3025,14 +3025,14 @@ function saveCardImage(){
   const isWX=/MicroMessenger/i.test(ua);
   // 导出图片数据：优先 PNG；PNG 太大时退回 JPEG（微信/iOS 对超大 dataURL 不友好）
   const cardDataURL=()=>{
-   const limit=touch?700000:1400000;                 // 手机端阈值更小，优先稳
+   const limit=touch?480000:1400000;                 // 手机端阈值更小，优先稳（微信对超大 dataURL 容易失败）
    let d="";
    try{ d=built.cv.toDataURL("image/png"); }catch(e){ d=""; }
    if(!d||d.length<20){
-    try{ d=built.cv.toDataURL("image/jpeg",0.94); }catch(e){ d=""; }
+    try{ d=built.cv.toDataURL("image/jpeg",0.95); }catch(e){ d=""; }
    }
    if(d.length>limit){
-    try{ const j=built.cv.toDataURL("image/jpeg",0.93); if(j&&j.length>20) d=j; }catch(e){}
+    try{ const j=built.cv.toDataURL("image/jpeg",0.95); if(j&&j.length>20) d=j; }catch(e){}
    }
    return d;
   };
