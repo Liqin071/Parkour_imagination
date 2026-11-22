@@ -71,7 +71,10 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 #narrative .nhead{font-size:11px;letter-spacing:.16em;color:#9fffd0;font-weight:900;margin-bottom:5px}
 #narrative .nbody{font-size:clamp(13px,2vw,16px);line-height:1.8;color:#f1f6ff;min-height:2.8em}
 #narrative .nquote{font-size:11px;line-height:1.6;color:#ffd58b;margin-top:5px}
-#narrative .ncount{font-size:11px;line-height:1.6;color:#9fffd0;margin-top:3px;letter-spacing:.04em}
+#narrative .ncount{font-size:11px;line-height:1.6;color:#9fffd0;margin-top:3px;letter-spacing:.04em;display:flex;align-items:center;flex-wrap:wrap;gap:0 18px}
+#narrative .ncount .ntag{color:#9fffd0}
+#narrative .ncount .nitem{display:inline-flex;align-items:center;gap:5px;color:#dff7ee;font-weight:800}
+#narrative .ncount .ni{width:19px;height:19px;object-fit:contain;display:block}
 @media(max-width:600px){#narrative{padding:10px 13px}#narrative .nbody{font-size:13px;line-height:1.65}}
 @media(max-width:430px){.stat{padding:6px 7px;font-size:10px}.hearts{font-size:15px;padding:6px 8px}}
 /* —— 新增：命中闪白 / 选项前摇 / 面板入场 —— */
@@ -107,9 +110,14 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 .bootbar b{display:block;height:100%;width:0%;border-radius:9px;background:linear-gradient(90deg,#9fffd0,#ffd58b);box-shadow:0 0 12px #9fffd0aa;transition:width .32s ease}
 .boottip{font-size:11px;letter-spacing:.14em;color:#8fa4c0;min-height:15px}
 /* —— 竖屏提示：手机竖着拿时盖住全屏，提示转横屏（纯 CSS 控制，转过来立刻消失） —— */
+/* —— 竖屏提示：只提示 3 秒，之后自动让开 ——
+   为什么不强制等横过来：微信里点链接打开的小游戏窗口往往锁定方向，
+   手机根本转不了横屏，卡在这里就等于玩不了。所以提示只是"提醒一下"。 */
 #rotate{position:fixed;inset:0;z-index:9500;display:none;place-items:center;
- background:radial-gradient(ellipse at 50% 32%,#283b5d,#11152b 62%,#090d1d);text-align:center;padding:24px}
-@media (orientation:portrait) and (max-width:900px){#rotate{display:grid}}
+ background:radial-gradient(ellipse at 50% 32%,#283b5d,#11152b 62%,#090d1d);text-align:center;padding:24px;
+ opacity:0;transition:opacity .28s ease}
+#rotate.show{display:grid;opacity:1}
+#rotate.hide{opacity:0;pointer-events:none}
 #rotate .rbox{width:min(320px,84vw)}
 #rotate .ricon{width:104px;height:74px;margin:0 auto 18px;border:3px solid #9fffd0;border-radius:12px;position:relative;
  box-shadow:0 0 26px #9fffd066;animation:rot 1.9s ease-in-out infinite}
@@ -171,8 +179,8 @@ h1{font-size:clamp(42px,11vw,76px);line-height:1.02;margin:0;font-weight:1000;le
 </div></div>
 <div id="rotate"><div class="rbox">
  <div class="ricon"></div>
- <div class="rtit">请把手机转为横屏</div>
- <div class="rsub">这个游戏按横屏设计：竖着拿会看不到完整画面。<br>把手机横过来就能继续。</div>
+ <div class="rtit">建议把手机转为横屏</div>
+ <div class="rsub">横屏能看到完整画面。<br><span style="color:#9fffd0">3 秒后自动继续</span>，也可以点一下直接关掉。</div>
 </div></div>
 <div id="app">
 <canvas id="world"></canvas>
@@ -342,6 +350,7 @@ let trans=null, fx=[];            // 场景切换：{dir:'out'|'in', t, dur, nex
 let gate=null, gateTouched=false, gateWarn=false, lastSpecialAt=-9999, trailAcc=0;
 let runTime=0;                  // 无尽模式已跑时长（秒），用于难度递增
 let clutter=[], clutterT=0;      // 干扰视线的零散装饰障碍（不参与碰撞）
+let gateSlowT=0, gateSlowNext=null;   // 触碰结界后的慢放计时 + 慢放结束时要做的事
 let ringFx=[];                   // 拾取反馈：以仙灵为圆心的收缩圆
 let coverOn=true;                // 封面（未开始）：只画深色底，不画游戏画面
 let hintT=0;                     // 开场「轻点小跳 · 按住大跳」提示的计时
@@ -508,6 +517,34 @@ function warmSprites(){
    ============================================================ */
 let gcache={sky:[],glow:[],ground:[],vign:null,cover:null};
 let starPaths=[];
+/* —— 竖屏提示：显示 3 秒后自动消失，点一下也能立刻关 —— */
+const ROTATE_MS=3000;
+let rotTimer=0, rotShown=false, rotPaused=false;
+function isPortraitPhone(){
+ try{
+  return !!(window.matchMedia&&window.matchMedia("(orientation:portrait) and (max-width:900px)").matches);
+ }catch(e){ return false; }
+}
+function showRotateHint(){
+ if(rotShown) return; rotShown=true;
+ const el=document.getElementById("rotate");
+ if(el){ el.classList.add("show"); el.classList.remove("hide"); }
+ // 提示期间先暂停，免得在遮挡画面时掉血；提示消失后自动继续
+ rotPaused=false;
+ if(playing()&&!paused){ pause(); rotPaused=true; }
+ clearTimeout(rotTimer);
+ rotTimer=setTimeout(hideRotateHint,ROTATE_MS);
+}
+function hideRotateHint(){
+ if(!rotShown) return; rotShown=false;
+ const el=document.getElementById("rotate");
+ if(el){
+  el.classList.add("hide");
+  setTimeout(()=>{ try{ el.classList.remove("show"); el.classList.remove("hide"); }catch(e){} },320);
+ }
+ clearTimeout(rotTimer);
+ if(rotPaused){ rotPaused=false; if(paused) resume(); }
+}
 function resize(){
  dpr=Math.min(window.devicePixelRatio||1,2);
  W=Math.max(320,window.innerWidth); H=Math.max(320,window.innerHeight);
@@ -515,10 +552,8 @@ function resize(){
  cv.style.width=W+"px"; cv.style.height=H+"px";
  ctx.setTransform(dpr,0,0,dpr,0,0);
  gcache={sky:[],glow:[],ground:[],vign:null,cover:null};
- // 手机竖着拿：盖住全屏提示转横屏，并自动暂停（避免在看不见画面的情况下掉血）
- const portrait = (typeof window!=="undefined")&&window.matchMedia
-   && window.matchMedia("(orientation:portrait) and (max-width:900px)").matches;
- if(portrait && playing() && !paused) pause();
+ // 手机竖着拿：给 3 秒提示（不强制等横屏，微信里可能根本转不了）
+ if(isPortraitPhone()) showRotateHint();
  buildStars(); warmSprites();
  draw();
 }
@@ -1103,6 +1138,55 @@ function drawHero(pal,gy){
  }
  ctx.restore();
 }
+/* —— 拾取音效：用 WebAudio 现场合成，不额外加载音频文件 ——
+   浏览器要求「先有用户操作」才能出声，所以第一次 pointerdown/keydown 时解锁。 */
+const SFX={ctx:null,on:true};
+const SFX_TONE={
+ shard:[{f:1046,g:.075,d:.14},{f:1568,g:.05,d:.10}],   // 碎片：两声极轻的叮
+ mic:  [{f:784,g:.09,d:.16},{f:1175,g:.07,d:.20}],
+ brush:[{f:698,g:.09,d:.16},{f:1046,g:.07,d:.20}]
+};
+function sfxInit(){
+ if(SFX.ctx) return SFX.ctx;
+ try{
+  const AC=(typeof window!=="undefined")&&(window.AudioContext||window.webkitAudioContext);
+  if(!AC) return null;
+  SFX.ctx=new AC();
+ }catch(e){ SFX.ctx=null; }
+ return SFX.ctx;
+}
+function sfxUnlock(){
+ const c=sfxInit();
+ if(c&&c.state==="suspended"){ try{ c.resume().catch(()=>{}); }catch(e){} }
+}
+function sfxPick(kind){
+ if(!SFX.on) return;
+ const c=sfxInit(); if(!c) return;
+ if(c.state==="suspended"){
+  // 还没解锁：试着恢复一下，成功后再补一声（不成功就静音，绝不报错）
+  try{ const pr=c.resume(); if(pr&&pr.then) pr.then(()=>{ if(c.state==="running") sfxPlay(c,kind); }).catch(()=>{}); }catch(e){}
+  return;
+ }
+ sfxPlay(c,kind);
+}
+function sfxPlay(c,kind){
+ const t0=c.currentTime;
+ const tones=SFX_TONE[kind]||SFX_TONE.shard;
+ try{
+  let t=t0;
+  for(const tn of tones){
+   const o=c.createOscillator(), g=c.createGain();
+   o.type="sine";
+   o.frequency.setValueAtTime(tn.f*(kind==="shard"?(0.97+Math.random()*0.06):1),t);
+   g.gain.setValueAtTime(0,t);
+   g.gain.linearRampToValueAtTime(tn.g,t+0.012);
+   g.gain.exponentialRampToValueAtTime(0.0001,t+tn.d);
+   o.connect(g); g.connect(c.destination);
+   o.start(t); o.stop(t+tn.d+0.02);
+   t+=tn.d*0.55;
+  }
+ }catch(e){}
+}
 /* —— 拾取反馈：以仙灵为圆心的收缩圆（从外往内收，收到中心后散掉）—— */
 function pushRing(color,strong){
  ringFx.push({t:0,dur:strong?.62:.5,r0:strong?150:112,color:color,strong:!!strong});
@@ -1641,13 +1725,19 @@ function moveEnts(dd,collide){
  }
  compact(ents,o=>o.kind==="gate"||(o.x>-140&&!o.got));
 }
-// 触碰结界 → 收起倒计时，立刻弹出选择（正常游玩直到这一刻，不冻结操作）
+// 触碰结界 → 先来 2 秒慢放（世界与角色一起减速），再弹出选择
+const GATE_SLOW_SEC=2.0;     // 慢放时长（真实时间，秒）
+const GATE_SLOW_SCALE=0.34;  // 慢放倍速：0.34 = 约三分之一速
 function onGateTouch(){
  if(gateTouched) return;
  if(phase!=="play"&&phase!=="windup") return;
  gateTouched=true; gateWarn=false;
- windupEl.style.display="none"; windNext=null;
- openQuestion(storyStep);
+ gateSlowT=GATE_SLOW_SEC;
+ gateSlowNext=()=>openQuestion(storyStep);
+ // 屏幕上给个提示，让玩家知道马上要出选择
+ windupEl.style.display="flex";
+ wtextEl.textContent="✦ 灵感共鸣即将发生 ✦";
+ wsubEl.textContent="正在凝聚你的选择…";
 }
 // 结界临近：只播倒计时特效，**不改变 phase**——角色照常跑、照常跳、照常吃碎片
 function startGateWarn(){
@@ -1660,9 +1750,9 @@ function startGateWarn(){
 function collect(o){
  o.got=true;
  const gy=groundY();
- if(o.type==="mic"){ mics++; if(chapter==="run")scoreBonus+=60; burst(o.x,gy-o.alt,"#ffd36e",10); pushRing("#ffd36e",true); toast("🎤 麦克风灵感 +1"); }
- else if(o.type==="brush"){ brushes++; if(chapter==="run")scoreBonus+=60; burst(o.x,gy-o.alt,"#ff82c5",10); pushRing("#ff82c5",true); toast("🖌️ 画笔灵感 +1"); }
- else { shards++; if(chapter==="run")scoreBonus+=20; burst(o.x,gy-o.alt,"#9fffd0",9); pushRing("#9fffd0",false); }
+ if(o.type==="mic"){ mics++; if(chapter==="run")scoreBonus+=60; burst(o.x,gy-o.alt,"#ffd36e",10); pushRing("#ffd36e",true); sfxPick("mic"); toast("🎤 麦克风灵感 +1"); }
+ else if(o.type==="brush"){ brushes++; if(chapter==="run")scoreBonus+=60; burst(o.x,gy-o.alt,"#ff82c5",10); pushRing("#ff82c5",true); sfxPick("brush"); toast("🖌️ 画笔灵感 +1"); }
+ else { shards++; if(chapter==="run")scoreBonus+=20; burst(o.x,gy-o.alt,"#9fffd0",6); sfxPick("shard"); }   // 碎片：只留一点碎屑 + 轻响，不弹提示、不画圆环
  syncCount();
 }
 // 受击反馈：只做闪白（+暗角+碎屑+无敌闪烁），不做顿帧/震屏，避免被误认为卡顿
@@ -1795,8 +1885,8 @@ function updateFx(dt){
    · 前 STORY_WAIT(5s) 之内按空格/轻触无效，只是把文字看完
    · 满 5 秒后画面下方出现「点击跳过」提示，玩家点一下才继续
    · 这样才能保证每段旁白至少被看到 5 秒，又不是强制干等 */
-const STORY_WAIT=5.0;      // 最少展示时长（秒），期间不能跳过
-const STORY_FADE=0.42;     // 跳过之后的快速淡出时长
+const STORY_WAIT=4.6;      // 最少展示时长（秒），期间不能跳过；加上淡出总共约 5 秒
+const STORY_FADE=0.35;     // 跳过之后的快速淡出时长
 function transitionInto(next,story){
  if(trans) return;
  phase="trans";
@@ -2063,10 +2153,27 @@ function setNarrative(step){
  $("narrativeQuote").textContent=card[2];
  syncCount();
 }
+/* 旁白区的计数：用跑酷画面里同一套图标代替「碎片/麦克风/画笔」文字，图标之间留大间距避免挤在一起 */
+const NARR_ICON={};
+function narrIconURL(type){
+ if(NARR_ICON[type]) return NARR_ICON[type];
+ let url="";
+ try{ url=itemSpr(type).c.toDataURL("image/png"); }catch(e){ url=""; }
+ NARR_ICON[type]=url;
+ return url;
+}
 function syncCount(){
  if(chapter!=="prologue") return;
- const t="✦ 已触碰灵感：碎片 "+shards+" · 麦克风 "+mics+" · 画笔 "+brushes;
- if(t!==countTxt){ countTxt=t; $("narrativeCount").textContent=t; }
+ const t=shards+"|"+mics+"|"+brushes;
+ if(t===countTxt) return;
+ countTxt=t;
+ const el=$("narrativeCount");
+ if(!el) return;
+ const ic=k=>{ const u=narrIconURL(k); return u?'<img class="ni" src="'+u+'" alt="">':''; };
+ el.innerHTML='<span class="ntag">✦ 已触碰灵感</span>'+
+  '<span class="nitem">'+ic("shard")+shards+'</span>'+
+  '<span class="nitem">'+ic("mic")+mics+'</span>'+
+  '<span class="nitem">'+ic("brush")+brushes+'</span>';
 }
 function syncHud(){
  if(chapter!=="run") return;
@@ -2100,6 +2207,10 @@ function softChange(){
    12. 主循环
    ============================================================ */
 let errCount=0;
+// 调试用：控制台里 __SFX() 能看到音效状态（suspended 说明还没被用户手势解锁，属正常）
+try{
+ window.__SFX=()=>({on:SFX.on, state:SFX.ctx?SFX.ctx.state:"none", sampleRate:SFX.ctx?SFX.ctx.sampleRate:null});
+}catch(e){}
 function startLoop(){
  if(loopOn) return;
  loopOn=true; lastT=performance.now();
@@ -2156,6 +2267,18 @@ function update(dt){
  }
 
  if(phase!=="play"&&phase!=="windup"&&phase!=="trans") return;
+
+ // —— 结界慢放：用真实时间倒计时 2 秒，期间整个世界与角色一起按 GATE_SLOW_SCALE 倍速走 ——
+ if(gateSlowT>0){
+  gateSlowT=Math.max(0,gateSlowT-dt);
+  dt*=GATE_SLOW_SCALE;
+  if(gateSlowT<=0&&gateSlowNext){
+   const fn=gateSlowNext; gateSlowNext=null;
+   windupEl.style.display="none";
+   fn();
+   return;
+  }
+ }
 
  if(grace>0) grace=Math.max(0,grace-dt);
  if(slowT>0) slowT=Math.max(0,slowT-dt);
@@ -2256,6 +2379,7 @@ function resetAll(){
  windupEl.style.display="none"; flashEl.classList.remove("hit");
  $("end").style.display="none"; $("endFromPause").style.display="none";
  ringFx=[]; hintT=0; coverOn=true;      // 回到封面态：只画深色底，等玩家点开始
+ gateSlowT=0; gateSlowNext=null;
 }
 function startGame(){
  hideScreens(); resetAll();
@@ -2281,8 +2405,7 @@ function enterEndlessNow(){
 function pause(){
  if(!playing()||paused) return;
  paused=true; $("pauseScreen").style.display="flex";
-}
-function resume(){
+}function resume(){
  if(!paused) return;
  paused=false; $("pauseScreen").style.display="none";
  lastT=performance.now();
@@ -2322,8 +2445,17 @@ $("app").addEventListener("pointerdown",e=>{
 });
 // 松手（任意位置）都能结束长按 → 小跳
 window.addEventListener("pointerup",()=>releaseJump());
+// 竖屏提示：点一下立刻关掉（不用等那 3 秒）
+(function(){
+ const r=document.getElementById("rotate");
+ if(r) r.addEventListener("pointerdown",e=>{ if(e&&e.preventDefault) e.preventDefault(); hideRotateHint(); });
+})();
 window.addEventListener("pointercancel",()=>releaseJump());
 window.addEventListener("blur",()=>releaseJump());
+// 首次交互解锁音频（手机浏览器/微信里必须由用户手势触发）
+window.addEventListener("pointerdown",sfxUnlock,{passive:true});
+window.addEventListener("keydown",sfxUnlock,{passive:true});
+window.addEventListener("touchstart",sfxUnlock,{passive:true});
 
 window.addEventListener("keydown",e=>{
  const isJump=e.code==="Space"||e.code==="ArrowUp"||e.code==="KeyW";
@@ -2349,8 +2481,7 @@ document.addEventListener("visibilitychange",()=>{
 });
 window.addEventListener("blur",()=>{ if(playing()&&!paused) pause(); });
 
-$("begin").onclick=e=>{ e.currentTarget.blur(); startGame(); };
-$("skipToRun").onclick=e=>{ e.currentTarget.blur(); enterEndlessNow(); };
+$("begin").onclick=e=>{ e.currentTarget.blur(); startGame(); };$("skipToRun").onclick=e=>{ e.currentTarget.blur(); enterEndlessNow(); };
 $("storyNext").onclick=continueFromStoryCard;
 $("pause").onclick=pause;
 $("resume").onclick=resume;
