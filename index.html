@@ -1150,8 +1150,8 @@ const SFX={ctx:null,on:true,master:null};/* 碎片 = 风铃：单音、清脆、
    连着吃几颗就像风铃被风吹到那样叮叮当当 */
 const CHIME=[1568.0,1760.0,2093.0,2349.3,2637.0,3136.0];   // G6 A6 C7 D7 E7 G7
 const SFX_TONE={
- mic:  [{f:784,g:.075,d:.16},{f:1175,g:.055,d:.20}],     // 麦克风：两音上行
- brush:[{f:698,g:.075,d:.16},{f:1046,g:.055,d:.20}]      // 画笔：两音上行（略低）
+ mic:  [{f:784,g:.044,d:.16},{f:1175,g:.030,d:.20}],    // 麦克风：两音上行
+ brush:[{f:698,g:.044,d:.16},{f:1046,g:.030,d:.20}]     // 画笔：两音上行（略低）
 };
 function sfxInit(){
  if(SFX.ctx) return SFX.ctx;
@@ -1191,7 +1191,7 @@ function chime(f,gain){
  const o2=c.createOscillator(), g2=c.createGain();
  o2.type="triangle"; o2.frequency.setValueAtTime(f*2.01,t);
  g2.gain.setValueAtTime(0,t);
- g2.gain.linearRampToValueAtTime(gain*0.28,t+0.003);
+ g2.gain.linearRampToValueAtTime(gain*0.22,t+0.003);
  g2.gain.exponentialRampToValueAtTime(0.0001,t+0.12);
  o2.connect(g2); g2.connect(SFX.master);
  o2.start(t); o2.stop(t+0.14);
@@ -1200,8 +1200,8 @@ function sfxPick(kind){
  if(!SFX.on) return;
  const c=sfxInit(); if(!c) return;
  if(kind==="shard"){
-  // 风铃：随机音高，连着拾取自然形成旋律
-  chime(CHIME[(Math.random()*CHIME.length)|0], 0.05);
+  // 风铃：随机音高，连着拾取自然形成旋律（音量压得很低，连吃也不吵）
+  chime(CHIME[(Math.random()*CHIME.length)|0], 0.026);
   return;
  }
  if(c.state==="suspended"){
@@ -1229,8 +1229,10 @@ function sfxPlay(c,kind){
  }catch(e){}
 }
 /* ============================================================
-   背景音乐：一段 8 秒的循环小曲（五声音阶钟琴 + 低音铺底）
-   —— 轻松、简单、不抢戏；暂停时自动淡出
+   背景音乐：四段式小曲（A → B → A' → C），一圈约 66 秒才回到开头
+   —— 每段用不同的旋律线条 + 不同配器（琶音 / 三度和声 / 高处点星），
+      底下是 C–Am–F–G 的四小节和弦铺底，所以既轻松又不至于单调。
+   —— 全部现场合成，暂停时自动淡出。
    ============================================================ */
 const MUSIC={
  on:true, playing:false, timer:0, nextT:0, step:0,
@@ -1238,16 +1240,71 @@ const MUSIC={
  vol:1.0,                    // 音乐总音量（改这一个数就能整体调大小）
  master:null
 };
-const MUSIC_SCALE=[523.25,587.33,659.25,783.99,880.00,1046.50];   // C5 D5 E5 G5 A5 C6（C 大调五声）
-const MUSIC_MELODY=[0,-1,4,-1, 2,-1,3,-1, 1,-1,5,3, 2,-1,0,-1];  // -1 = 休止，留白多一点更轻松
-const MUSIC_PAD=[130.81,196.00];                                  // C3 + G3 长音铺底
+// C 大调五声音阶（C5 D5 E5 G5 A5 C6）——没有半音，随便排都不会难听
+const MUSIC_SCALE=[523.25,587.33,659.25,783.99,880.00,1046.50];
+// 四小节和弦进行：C – Am – F – G（根音+五度的铺底，加一组分解和弦音）
+const MUSIC_CHORDS=[
+ {pad:[130.81,196.00],arp:[523.25,659.25,783.99,659.25]},   // C
+ {pad:[110.00,164.81],arp:[440.00,523.25,659.25,523.25]},   // Am
+ {pad:[ 87.31,130.81],arp:[349.23,440.00,523.25,440.00]},   // F
+ {pad:[ 98.00,146.83],arp:[392.00,493.88,587.33,493.88]}    // G
+];
+// —— 四段旋律，每段 4 小节 × 8 步 = 32 步；-1 是休止 ——
+const MUSIC_SEC_A=[                                        // A 段：主题，最素
+ 0,-1,4,-1, 2,-1,3,-1,
+ 1,-1,5, 3, 2,-1,0,-1,
+ 4,-1,2,-1, 3, 2,1,-1,
+ 0,-1,-1, 2, 1,-1,0,-1];
+const MUSIC_SEC_B=[                                        // B 段：走高、更亮
+ 5,-1,4,-1, 5,-1,2,-1,
+ 3,-1,2, 1, 0,-1,2,-1,
+ 5, 4,-1, 3, 2,-1,5,-1,
+ 4,-1,3, 2, 0,-1,-1,-1];
+const MUSIC_SEC_C=[                                        // C 段：稀疏、收束
+ 0,-1,-1, 1,-1, 2,-1,-1,
+ 3,-1,-1, 2,-1, 1,-1,-1,
+ 0,-1,4,-1, 3,-1,2,-1,
+ 1,-1,0,-1,-1,-1,-1,-1];
+const MUSIC_SECTIONS=[MUSIC_SEC_A,MUSIC_SEC_B,MUSIC_SEC_A,MUSIC_SEC_C];   // 第 3 段是 A 段加和声
+const MUSIC_TOTAL=MUSIC_SECTIONS.length*32;                               // 128 步 ≈ 66 秒
+/* 纯函数：第 step 步要发哪些音。返回 [{f,d,g,t}]，方便单独核验与调参。
+   sec 0 = A（只有铺底+主旋律）
+   sec 1 = B（+ 分解和弦琶音）
+   sec 2 = A'（+ 下行三度和声 + 琶音）
+   sec 3 = C（稀疏主旋律 + 高处点星） */
+function musicPlan(step){
+ const out=[];
+ const s=((step%MUSIC_TOTAL)+MUSIC_TOTAL)%MUSIC_TOTAL;
+ const sec=(s/32)|0;
+ const i=s%32;
+ const bar=(i/8)|0;
+ const ch=MUSIC_CHORDS[bar%MUSIC_CHORDS.length];
+ // ① 铺底：每小节第一步换一次和弦（根音 + 五度，长音）
+ if(i%8===0){ out.push({f:ch.pad[0],d:3.6,g:0.030}); out.push({f:ch.pad[1],d:3.6,g:0.020}); }
+ // ② 主旋律：钟琴 + 一个很轻的高八度泛音
+ const v=MUSIC_SECTIONS[sec][i];
+ if(v>=0){
+  out.push({f:MUSIC_SCALE[v],d:0.85,g:0.062});
+  out.push({f:MUSIC_SCALE[v]*2,d:0.40,g:0.016});
+  // ③ A' 段：给主旋律垫一条下方的三度和声（合奏感）
+  if(sec===2&&v>0) out.push({f:MUSIC_SCALE[v-1],d:0.90,g:0.030,t:0.045});
+ }
+ // ④ B / A' 段：每两步一个轻柔的分解和弦音
+ if((sec===1||sec===2)&&i%2===0){
+  out.push({f:ch.arp[(i/2|0)%ch.arp.length],d:0.60,g:0.015});
+ }
+ // ⑤ C 段：偶尔在高处点一颗星（用拾取那套风铃音高）
+ if(sec===3&&(i%8===3||i%8===6)) out.push({f:CHIME[(i/3|0)%CHIME.length],d:0.55,g:0.012});
+ return out;
+}
 function musicNode(f,t,dur,gain,type){
  const c=SFX.ctx; if(!c) return;
  const o=c.createOscillator(), g=c.createGain();
  o.type=type||"sine";
  o.frequency.setValueAtTime(f,t);
  g.gain.setValueAtTime(0,t);
- g.gain.linearRampToValueAtTime(gain*(MUSIC.vol||1),t+0.02);
+ // 轻微的音量抖动，让每一圈都不完全一样（听感上不容易腻）
+ g.gain.linearRampToValueAtTime(gain*(MUSIC.vol||1)*(0.9+Math.random()*0.2),t+0.02);
  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
  o.connect(g); g.connect(MUSIC.master||SFX.master||c.destination);
  o.start(t); o.stop(t+dur+0.05);
@@ -1257,15 +1314,11 @@ function musicSchedule(){
  const now=c.currentTime;
  if(!(MUSIC.nextT>now-2)) MUSIC.nextT=now+0.05;      // 被挂起过（currentTime 回退）就重新对齐
  while(MUSIC.nextT<now+0.9){
-  const i=MUSIC.step%MUSIC_MELODY.length;
-  const v=MUSIC_MELODY[i];
-  if(v>=0){
-   musicNode(MUSIC_SCALE[v],MUSIC.nextT,0.85,0.070,"sine");        // 钟琴
-   musicNode(MUSIC_SCALE[v]*2,MUSIC.nextT,0.40,0.018,"sine");      // 高八度泛音，更通透
-  }
-  if(i%8===0){
-   musicNode(MUSIC_PAD[0],MUSIC.nextT,3.8,0.030,"sine");           // 低音铺底
-   musicNode(MUSIC_PAD[1],MUSIC.nextT,3.8,0.020,"sine");
+  const notes=musicPlan(MUSIC.step);
+  for(let k=0;k<notes.length;k++){
+   const n=notes[k];
+   // 时间上再抖 10 毫秒左右，避免听起来像打点机
+   musicNode(n.f,MUSIC.nextT+(n.t||0)+(Math.random()-0.5)*0.012,n.d,n.g);
   }
   MUSIC.nextT+=MUSIC.stepSec;
   MUSIC.step++;
@@ -2331,12 +2384,21 @@ function softChange(){
    12. 主循环
    ============================================================ */
 let errCount=0;
-// 调试用：控制台里 __SFX() 能看到音效/音乐状态
+// 调试用：控制台里 __SFX() 能看到音效/音乐状态；__MUSIC_PLAN(起始步, 步数) 可以预览旋律
 try{
  window.__SFX=()=>({on:SFX.on, state:SFX.ctx?SFX.ctx.state:"none", sampleRate:SFX.ctx?SFX.ctx.sampleRate:null,
   sfxGain:SFX.master?+SFX.master.gain.value.toFixed(3):null,
   musicGain:MUSIC.master?+MUSIC.master.gain.value.toFixed(3):null,
-  music:{on:MUSIC.on,playing:MUSIC.playing,step:MUSIC.step,vol:MUSIC.vol}});
+  music:{on:MUSIC.on,playing:MUSIC.playing,step:MUSIC.step,sec:((MUSIC.step%MUSIC_TOTAL)/32)|0,
+   total:MUSIC_TOTAL,stepSec:MUSIC.stepSec,vol:MUSIC.vol}});
+ window.__MUSIC_PLAN=(from,n)=>{
+  const a=from|0, k=Math.max(1,Math.min(512,n|0)), rows=[];
+  for(let i=0;i<k;i++){
+   const st=a+i, sec=((st%MUSIC_TOTAL)+MUSIC_TOTAL)%MUSIC_TOTAL/32|0;
+   rows.push({step:st,sec,notes:musicPlan(st).map(x=>+x.f.toFixed(1))});
+  }
+  return rows;
+ };
 }catch(e){}
 function startLoop(){
  if(loopOn) return;
